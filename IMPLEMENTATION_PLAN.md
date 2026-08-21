@@ -32,17 +32,23 @@ python3 parity/check.py               # has the Solidity moved under us?
 
 | | State |
 |---|---|
+| Repo | This one. The Solidity reference is a separate repository; `make parity` reads it and never writes to it. |
 | Toolchain | Rust 1.98.0, `wasm32v1-none`, soroban-sdk 27.0.6, stellar-cli 27.1.0. |
-| `piron-core` | All three pool types plus governance. 155 tests. Allocation-free `no_std`, zero dependencies. |
+| `piron-core` | All three pool types plus governance. 155 tests. `no_std`, zero dependencies, allocation-free, no chain types. |
+| `piron-types` | Soroban wire types, shared by the managers and the factory. Contains no contract, by design. |
 | `access-manager` | 23KB, 20 tests. Seven roles, 24h grant timelock, multisig execution, pause. |
 | `pool-registry` | 22KB, 13 tests. Pools, approved assets, vetted SPVs. |
 | `fee-manager` | 23KB, 10 tests. Per-type splits, per-asset accounting, distribution. |
 | `pool-escrow` | 12KB, 7 tests. Segregated custody, manager-only releases. |
-| `single-asset-manager` | 58KB, 21 tests. Full deal lifecycle. |
-| `locked-pool-manager` | 48KB, 24 tests. Tiers, positions, early exit, rollover. |
-| `stable-yield-manager` | 48KB, 21 tests. NAV pricing, batched queue, reserves. |
-| `rust/solana/single-asset` | Scaffold. Excluded pending an Anchor pin. |
-| Deployment | **Live on testnet.** `deployments/soroban-testnet.env`, deployed by `scripts/deploy_soroban.sh`. |
+| `pool-factory` | 34KB, 11 tests. Deterministic deployment of all three pool types. |
+| `single-asset-manager` | 58KB, 21 tests. |
+| `locked-pool-manager` | 48KB, 24 tests. |
+| `stable-yield-manager` | 48KB, 21 tests. |
+| `solana/single-asset` | Binding scaffold against the same core. Excluded pending an Anchor pin. |
+| Deployment | **Live on testnet**, built through the factory. `make deploy`. |
+
+**276 tests, 8 contracts, zero warnings.**
+
 
 **271 tests passing, 7 contracts.** `make soroban-test`, `make soroban-deploy`.
 
@@ -168,6 +174,9 @@ correctness fix.
 cross-contract call; `shares_of` / `total_supply` on the manager become thin forwards.
 
 ### ~~S6b. Deploy to testnet~~ · **done**
+Re-verified after the repo split and the factory: a pool created through the factory took
+a 100 XLM deposit into real custody, and executing a role grant before its 24 hours were
+up was refused with error 602.
 `scripts/deploy_soroban.sh testnet` deploys all five contracts in dependency order, wires
 them, and writes `deployments/soroban-testnet.env`. A 100 XLM deposit has been executed
 against the live pool: escrow custody confirmed, shares minted 1:1, events emitted, and a
@@ -179,8 +188,12 @@ Seven roles, the 24-hour grant timelock with multisig execution, immediate multi
 revocation, `renounce_role` that always fails by design, and a pause that emergency can
 set but only admin can clear. The registry gates pools on approved assets and vetted SPVs.
 
-**Still open:** the factory. Pools are deployed individually today; `Deployer` with a salt
-would give addresses predictable before the transaction.
+### ~~The factory~~ · **done**
+`pool-factory` deploys a manager and its escrow from one salt, binds them, and registers
+the pool — atomically, so there is no window where an escrow exists unbound or a manager
+points at one that will take orders from someone else. Addresses are knowable before the
+transaction: on the live testnet deployment the predicted pair matched the created pair
+exactly.
 
 ### ~~S8. Fee manager~~ · **done**
 Per-fee-type splits validated to total exactly 100%, split at collection so a policy change

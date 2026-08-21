@@ -16,15 +16,21 @@ conventions in `.claude/skills/piron-multichain/SKILL.md` · the Solana binding 
 Everything else follows from this: **protocol logic and platform binding are separate crates.**
 
 ```
-rust/
-  crates/
-    piron-core/            no_std, zero dependencies. No SDK, no Env, no I/O.
-                           Math, state machine, validation. Shared with Solana.
-  soroban/
-    single-asset-manager/  soroban-sdk. Storage tiers, TTL, require_auth, SEP-41.
-  solana/
-    single-asset/          anchor-lang. Accounts, PDAs, signers, SPL.
+crates/
+  piron-core/          no_std, zero dependencies, allocates nothing. No SDK, no Env,
+                       no I/O. Math, state machines, validation. Shared with Solana.
+soroban/
+  piron-types/         Soroban wire types. No contract in it — see below.
+  access-manager/  pool-registry/  fee-manager/  pool-escrow/  pool-factory/
+  single-asset-manager/  locked-pool-manager/  stable-yield-manager/
+solana/
+  single-asset/        anchor-lang. Accounts, PDAs, signers, SPL.
 ```
+
+`piron-types` exists because a factory needs a manager's constructor types to deploy it,
+and depending on the manager crate for them drags that contract's exported symbols into
+the factory's wasm, where they collide at link time. Shared `#[contracttype]` structs go in
+a crate with no `#[contract]` in it.
 
 Platform *policy* stays with its platform: TTL constants live in the Soroban binding, not
 in core, because Solana has no TTL.
@@ -75,7 +81,7 @@ Stellar.
 | `libraries/LockedPool*.sol` | `locked::*` | core |
 | `libraries/StableYield*.sol` | `stable_yield::*` | core |
 | `types/IPoolTypes.sol` | `types` | core |
-| `Manager.sol` | `rust/soroban/single-asset-manager` | binding |
+| `Manager.sol` | `soroban/single-asset-manager` | binding |
 | `LiquidityPool.sol` (ERC-4626) | `single-asset-vault` (OZ `Vault`) | contract |
 | `escrows/PoolEscrow.sol` | `single-asset-escrow` | contract |
 | `AccessManager.sol` | OZ `stellar-access` RBAC + grant-delay wrapper | contract |
@@ -176,7 +182,7 @@ established pattern.
   `single_asset::validate` (from `ValidationLibrary.sol`, plus `validate_config`),
   `single_asset::lifecycle` (from `PoolLifecycleLibrary.sol`), `single_asset::flow` (from
   `DepositWithdrawalLibrary.sol`). 79 tests, scenario names mirroring the Foundry suite.
-- `rust/soroban/single-asset-manager` — storage keys and tiers, TTL policy, the host↔core conversion
+- `soroban/single-asset-manager` — storage keys and tiers, TTL policy, the host↔core conversion
   boundary, TTL bump helpers, and `record_deposit` / `record_coupon` / `claim_coupon` /
   `pool_value` demonstrating the auth → bump → delegate → emit pattern. Held out of the
   workspace until `soroban-sdk` is pinned to a confirmed release.

@@ -4,7 +4,7 @@
 //! independent positions rather than one deal, so almost everything lives in Persistent
 //! storage keyed by position id, and only the tier table and pool totals sit in Instance.
 
-use soroban_sdk::{contracttype, Address, Env};
+use soroban_sdk::{contracttype, Env};
 
 pub use piron_types::ttl;
 pub use piron_types::{

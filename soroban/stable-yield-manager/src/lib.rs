@@ -416,7 +416,7 @@ impl StableYieldManager {
         let price = nav::nav_per_share(total_nav, Self::total_shares(&env))?;
 
         // Load only the slice this batch may touch, so the footprint is known up front.
-        let mut slice = piron_core::stable_yield::types::WithdrawalQueue {
+        let slice = piron_core::stable_yield::types::WithdrawalQueue {
             head,
             tail,
             total_pending_value: 0,
@@ -495,7 +495,6 @@ impl StableYieldManager {
         env.storage()
             .instance()
             .set(&DataKey::QueueHead, &outcome.new_head);
-        slice.head = outcome.new_head;
 
         let pending: i128 = env
             .storage()

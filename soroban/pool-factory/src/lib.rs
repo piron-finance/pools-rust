@@ -19,7 +19,10 @@ use soroban_sdk::{
 };
 
 use piron_core::governance::roles::Role;
-use piron_types::{Config as StableYieldConfig, PoolType, Roles, StoredConfig};
+// No `as` aliases: `#[contracttype]` records the name it is written with, and the
+// spec entry is emitted under the type's real name. An alias makes the two disagree and
+// the contract fails to deploy with "Missing Entry".
+use piron_types::{Config, PoolType, Roles, StoredConfig};
 
 const LEDGERS_PER_DAY: u32 = 17_280;
 const BUMP: u32 = LEDGERS_PER_DAY * 60;
@@ -181,7 +184,7 @@ impl PoolFactory {
         salt: BytesN<32>,
         roles: Roles,
         asset: Address,
-        config: StableYieldConfig,
+        config: Config,
     ) -> Result<PoolAddresses, Error> {
         Self::require_creator(&env, &caller)?;
         let escrow = Self::deploy_escrow(&env, &salt, &asset)?;

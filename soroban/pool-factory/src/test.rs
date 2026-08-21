@@ -294,7 +294,7 @@ fn the_factory_builds_all_three_pool_types() {
         &salt(&f.env, 3),
         &pool_roles(&f),
         &f.asset,
-        &StableYieldConfig {
+        &Config {
             min_investment: 1_000,
             holding_period: 604_800,
             withdrawal_fee_bps: 50,
