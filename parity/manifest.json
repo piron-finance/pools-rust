@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "generated": "2026-08-21T20:17:22Z",
+  "reference": "the Solidity repo is the reference implementation",
+  "solidity_root": "/Users/ernestnnamdi/Desktop/piron-pools/piron-pools/src",
+  "solidity_revision": "d8994ce",
+  "files": {
+    "src/AccessManager.sol": {
+      "sha256": "278b23d9048f2095b08ee53b6da5fef10167c2d7f119e30ac1d4f5d51e8f6dc0",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/governance/roles.rs",
+        "soroban/access-manager/src/lib.rs"
+      ]
+    },
+    "src/FeeManager.sol": {
+      "sha256": "01c7d1aef130668d06689b7813aef44a6736dd3d34f6dabff895e4973a0bd79c",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/governance/fees.rs",
+        "soroban/fee-manager/src/lib.rs"
+      ]
+    },
+    "src/LiquidityPool.sol": {
+      "sha256": "5cb6c1dfb6cab460a21e1510c14b08cb38ae8411b2aab8e00780c2a043d9184a",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/LockedPoolManager.sol": {
+      "sha256": "1f74ef6c5cd418cc856b7e28e86ac61f6dc3c7b3593ffb94d155ad88165c0024",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/locked/lifecycle.rs",
+        "soroban/locked-pool-manager/src/lib.rs"
+      ]
+    },
+    "src/Manager.sol": {
+      "sha256": "c7c67afe229ee62982bed469ac77c6625e04af6fc9b45846169141c3159bdaa3",
+      "status": "ported",
+      "mirrors": [
+        "soroban/single-asset-manager/src/lib.rs",
+        "solana/single-asset/src/lib.rs"
+      ]
+    },
+    "src/PoolRegistry.sol": {
+      "sha256": "0107347f286ca4bc26592035aec905dbac6407fc6ec6b1a811e37fb886ffc9f1",
+      "status": "ported",
+      "mirrors": [
+        "soroban/pool-registry/src/lib.rs"
+      ]
+    },
+    "src/StableYieldManager.sol": {
+      "sha256": "20306aeb104135d609e475a39546b4f3548d686bc8d58e0e514ab8434ea799bd",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/stable_yield/queue.rs",
+        "soroban/stable-yield-manager/src/lib.rs"
+      ]
+    },
+    "src/escrows/LockedPoolEscrow.sol": {
+      "sha256": "ae05544c3fa75a19751142ad15c47664d5e42e2c7f9b212a235be7c57ad6bc9e",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/escrows/PoolEscrow.sol": {
+      "sha256": "912af396dffb7cb13ddf134990112b117c3e3a6b661d0e279d289cdcadd2524d",
+      "status": "ported",
+      "mirrors": [
+        "soroban/pool-escrow/src/lib.rs"
+      ]
+    },
+    "src/escrows/StableYieldEscrow.sol": {
+      "sha256": "27f661d7bbf8f6d1a55c1fd2e17bb8cd88dc51c2a5cf2cd387ed4419e74c3c1e",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/escrows/YieldReserveEscrow.sol": {
+      "sha256": "5df69f5eccdbcfa46654c65f35830c30da01cd05b3497aae8a462b62b945627e",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/factories/ManagedPoolFactory.sol": {
+      "sha256": "8fb54f049339879be9cce9f5138f5f404c3f28d8a1502e20c9bd4b59e1ef3a04",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/factories/PoolFactory.sol": {
+      "sha256": "7d3e4dcf716e745466026aa8f0bb221ddaab6056088b2610e6aad9b4929ea7be",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/governance/TimelockController.sol": {
+      "sha256": "d12961b768dd9648d8cbbba7a2b1b9a8aa86862abb1acfe49074618c01a6cba8",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/governance/UpgradeGuardian.sol": {
+      "sha256": "894f78fe79f8d24ce5585925632a432595cf4ac6f28b16fca9a674343bd4e704",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/interfaces/IFeeManager 2.sol": {
+      "sha256": "ca36036ac76884ddcc9940695bd1180f05d246804f6105d8c9c001d4fd27b5fd",
+      "status": "evm-only",
+      "mirrors": []
+    },
+    "src/interfaces/IFeeManager.sol": {
+      "sha256": "79bb0cb58786fe5ba2c2331b14d83d6de7325f4f9806f2fcb722498d52c45e2d",
+      "status": "evm-only",
+      "mirrors": []
+    },
+    "src/interfaces/ILiquidityPool.sol": {
+      "sha256": "3686e734d3c447b6f8b3f999b381f422c69f9b806ed6329095b6dbab81954f02",
+      "status": "evm-only",
+      "mirrors": []
+    },
+    "src/interfaces/ILockedPoolManager.sol": {
+      "sha256": "0a0f9b57efe66cb19dc6fd2d5c04907041469f8b469943342815140981d597a9",
+      "status": "evm-only",
+      "mirrors": []
+    },
+    "src/interfaces/IManager.sol": {
+      "sha256": "849ff564b5453403c90ece2757c3869ffec3a76f2e30eea90da6c583ee73dd4a",
+      "status": "evm-only",
+      "mirrors": []
+    },
+    "src/interfaces/IPoolEscrow.sol": {
+      "sha256": "cb7dea10a8c8685d211db17c99833d057758f95d22f9dac4772ff6d4199aee27",
+      "status": "evm-only",
+      "mirrors": []
+    },
+    "src/interfaces/IPoolFactory.sol": {
+      "sha256": "260642e4579b6982cacf0c3dc359f2142817df84755d8018193e50fcd85701d0",
+      "status": "evm-only",
+      "mirrors": []
+    },
+    "src/interfaces/IPoolRegistry.sol": {
+      "sha256": "ad1748b776aaa3530dfb342b7e8cc3528a0190bb5a6aed574f1887f6cae6a402",
+      "status": "evm-only",
+      "mirrors": []
+    },
+    "src/interfaces/IYieldReserveEscrow.sol": {
+      "sha256": "94284590cea3311d7dbba45c42f187da3b6a507dbf343c7dab98f8898fa50a5d",
+      "status": "evm-only",
+      "mirrors": []
+    },
+    "src/libraries/CalculationLibrary.sol": {
+      "sha256": "938f41d74a9a069ee606941e3af471a7270d1a31719894780f1de1811b460b4b",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/single_asset/calc.rs"
+      ]
+    },
+    "src/libraries/DepositWithdrawalLibrary.sol": {
+      "sha256": "ea03301b5c4ffcc93bf57fe7a194d6618e06208e0988ff5aff48f79cae5383c3",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/single_asset/flow.rs"
+      ]
+    },
+    "src/libraries/LockedPoolLibrary.sol": {
+      "sha256": "6450b5d0d3b867943ff0a541f3ed3b189b1d0aaf9599523506fca628f5f75530",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/locked/calc.rs",
+        "crates/piron-core/src/locked/validate.rs"
+      ]
+    },
+    "src/libraries/LockedPoolManagerLib.sol": {
+      "sha256": "c0077faad0c5eed7226519a6cce4d812b496b55ae7d7755dea5244b6e5d228bb",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/libraries/PoolLifecycleLibrary.sol": {
+      "sha256": "b6e020f0a9c8792cf5eb0fe9141ea38e735688e0673a1a5ca286bddcb2b7e3bf",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/single_asset/lifecycle.rs"
+      ]
+    },
+    "src/libraries/StableYieldManagerLib.sol": {
+      "sha256": "5566b99219f344bd7f541c15353442ef3219fef8092e24df32a82a63538f1593",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/libraries/StableYieldNAVLibrary.sol": {
+      "sha256": "d7247f3a5e866dae4be6db80982a408617e1ddf3cb3ba2ba6524625b74e9e760",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/stable_yield/nav.rs"
+      ]
+    },
+    "src/libraries/ValidationLibrary.sol": {
+      "sha256": "60e3607a2e0c0e6189a4bab2d8410f7bf6b1c288a485066d10edad43c0afa8d5",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/single_asset/validate.rs",
+        "crates/piron-core/src/single_asset/flow.rs"
+      ]
+    },
+    "src/managed/LockedPool.sol": {
+      "sha256": "98749d42de2967660c137cfd5b59381679c98fe3ef9baf53e596719608d64bee",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/managed/StableYieldPool.sol": {
+      "sha256": "798e0046add92f29b2c8438092eab64c561970e70b6e7989ed60703fe7552e61",
+      "status": "pending",
+      "mirrors": []
+    },
+    "src/types/ILockedPoolTypes.sol": {
+      "sha256": "acc58503ef1aafe07faae21c388d48096d48f24056176f1cfb72acc8ffc11e8b",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/locked/types.rs"
+      ]
+    },
+    "src/types/IPoolTypes.sol": {
+      "sha256": "583558425b2b17881307d26615425b12121e6c13d85631db9ccc30d5f3aa3b13",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/types.rs"
+      ]
+    },
+    "src/types/IStableYieldTypes.sol": {
+      "sha256": "4643c3c5b80910c6a942cb9caecbe412297fcae485b24b390817e16902969ee1",
+      "status": "ported",
+      "mirrors": [
+        "crates/piron-core/src/stable_yield/types.rs"
+      ]
+    }
+  }
+}

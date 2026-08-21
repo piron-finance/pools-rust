@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/piron-core",
+    "soroban/piron-types",
+    "soroban/single-asset-manager",
+    "soroban/pool-escrow",
+    "soroban/locked-pool-manager",
+    "soroban/stable-yield-manager",
+    "soroban/access-manager",
+    "soroban/pool-registry",
+    "soroban/fee-manager",
+    "soroban/pool-factory",
+]
+
+# Solana is excluded: it builds through `cargo-build-sbf`, which manages its own
+# toolchain, and its anchor-lang pin is not yet confirmed.
+exclude = ["solana/single-asset"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+# Wasm release profile for Soroban. Solana programs build via cargo-build-sbf, which
+# applies its own profile.
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true

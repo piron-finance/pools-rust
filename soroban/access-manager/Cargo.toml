@@ -1,0 +1,16 @@
+[package]
+name = "access-manager"
+description = "Role-based access control with timelocked grants for Piron."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+piron-core = { path = "../../crates/piron-core" }
+soroban-sdk = "27.0.6"
+
+[dev-dependencies]
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }

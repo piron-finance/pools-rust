@@ -1,0 +1,4 @@
+{
+  "solidity_root": "../piron-pools/piron-pools/src",
+  "note": "Path to the Solidity reference repo's src/, relative to this repo's root. Override with --solidity or $PIRON_SOLIDITY_ROOT."
+}

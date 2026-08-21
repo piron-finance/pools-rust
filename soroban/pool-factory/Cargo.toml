@@ -1,0 +1,21 @@
+[package]
+name = "pool-factory"
+description = "Deterministic deployment of Piron pools and their escrows."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+piron-core = { path = "../../crates/piron-core" }
+soroban-sdk = "27.0.6"
+piron-types = { path = "../piron-types" }
+
+[dev-dependencies]
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }
+access-manager = { path = "../access-manager" }
+single-asset-manager = { path = "../single-asset-manager" }
+pool-registry = { path = "../pool-registry" }
+pool-escrow = { path = "../pool-escrow" }

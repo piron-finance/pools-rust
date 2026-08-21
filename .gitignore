@@ -1,0 +1,9 @@
+target/
+Cargo.lock
+
+# Local Claude Code config
+.claude/
+
+# Deployment records are environment-specific
+deployments/*.env
+!deployments/README.md

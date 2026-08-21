@@ -1,0 +1,13 @@
+[package]
+name = "piron-types"
+description = "Soroban wire types shared by the Piron contracts. Contains no contract."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+piron-core = { path = "../../crates/piron-core" }
+soroban-sdk = "27.0.6"

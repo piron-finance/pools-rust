@@ -1,0 +1,13 @@
+[package]
+name = "piron-core"
+description = "Platform-independent protocol logic for Piron Pools. No chain, no SDK, no I/O."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+# Intentionally empty. Adding a dependency here is a design change — see
+# .claude/skills/piron-soroban/SKILL.md, rule 1.
+[dependencies]

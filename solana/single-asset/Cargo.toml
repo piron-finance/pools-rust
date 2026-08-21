@@ -1,0 +1,26 @@
+[package]
+name = "piron-single-asset-solana"
+description = "Solana binding for Piron Single-Asset pools. Accounts, PDAs, signers, CPI."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "piron_single_asset_solana"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+piron-core = { path = "../../crates/piron-core" }
+# TODO(pin): confirm the current Anchor release before first build —
+#   cargo search anchor-lang
+# Excluded from the workspace until this is real. Solana builds via `cargo-build-sbf`,
+# which brings its own toolchain rather than using rust-toolchain.toml.
+anchor-lang = "0.31"
