@@ -67,20 +67,20 @@ machinery, the UI needs to stop offering it in the meantime.
 
 ## The plan
 
-Ordered by severity × independence × size. Each row is one PR.
+| # | Closes | What | Status |
+|---|---|---|---|
+| 1 | D2 | Redemption pays from actuals, not projections | **PR #29** |
+| 2 | C1 | `emergencyRedeem` cannot redirect funds; pause/unpause authority split | **PR #30** |
+| 3 | — | Instrument config hardening, `writeOffInstrument` | **PR #31** |
+| 4 | B1 | Every withdrawal path emits an indexable event | **PR #32** |
+| 5 | D1 | Redemption divisor fixed at settlement | **PR #33**, stacked on #29 |
+| 6 | D3, D6 | Emergency semantics across all three pool types | to do |
+| 7 | A4 | Worthless-pool semantics | to do, needs a decision |
+| 8 | D4, D5, D7, B2, discount | Dead code and the bps type | to do |
 
-| # | Closes | What | Size | Blocked on |
-|---|---|---|---|---|
-| 1 | — | **PR #29**, projection bug | done | review |
-| 2 | A1 | Validate `couponFrequency`; defensive NAV branch; admin instrument deactivation | S | — |
-| 3 | D1, D6 | Fix the redemption divisor | S | #29 |
-| 4 | B1 | One indexable withdrawal event on all three paths | S | — |
-| 5 | A2, A3 | Paginate the withdrawal queue and the position/debt loops | M | — |
-| 6 | A4 | Decide and encode worthless-pool semantics | S | a decision |
-| 7 | D3, A5 | Emergency semantics across all three pool types | M | three decisions |
-| 8 | D4, D5, D7, B2 | Dead code, the bps type, the refund path | S | one decision |
+A1, A2, A3 and A5 were withdrawn — see `AUDIT.md`. Nothing in the plan depends on them.
 
-### 2 — A1, the frozen pool · start here
+### Withdrawn — A1, A2, A3, A5
 
 Smallest critical fix, no interaction with anything else.
 

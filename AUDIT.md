@@ -6,8 +6,48 @@ Single Asset redemption path.
 
 Nothing here is fixed. PR #29 covers only the projection bug (D1/D2 in `DEFECTS.md`).
 
-| | Finding | Severity | Contract |
+| | Finding | Severity | Status |
 |---|---|---|---|
+| C1 | `emergencyRedeem` lets an operator move any holder's value to any address | **Critical** | fixed in #30 |
+| A4 | A fully impaired pool cannot be recapitalised | Medium | open |
+| A6 | `timelockController` is immutable with no recovery path | Low | open, by design |
+| ~~A1~~ | ~~A zero `couponFrequency` freezes a Stable Yield pool~~ | — | **withdrawn** |
+| ~~A2~~ | ~~Withdrawal queue iterates unbounded~~ | — | **withdrawn** |
+| ~~A3~~ | ~~Position and debt loops iterate unbounded~~ | — | **withdrawn** |
+| ~~A5~~ | ~~Locked and Stable Yield have no pause~~ | — | **withdrawn** |
+
+## Four findings withdrawn, and why
+
+I found these by grepping for shapes — division sites, `for` loops, missing `require`s —
+and reasoned about severity without reading the enclosing functions or following
+delegation. Every one was wrong. Recording them so the mistake is visible rather than
+quietly deleted.
+
+**A1 — a zero `couponFrequency` freezes the pool.** `addInstrument` delegates to
+`_addInstrumentWithAllocation`, which already rejects it, and `test_couponFrequencyValidation`
+already covered it. I read the first part of `addInstrument`, saw only allocation checks,
+and stopped.
+
+**A2 — the withdrawal queue iterates unbounded.** `_processQueue` is already bounded:
+`maxRequests`, a persisted `queue.head` cursor, a break on insufficient liquidity, and a
+draw on the yield reserve before giving up. It is the design I "recommended" — already
+written. The two unbounded loops I found are in `view` functions, which run off-chain.
+
+**A3 — position and debt loops iterate unbounded.** `batchMaturePositions`,
+`batchExecuteRollovers` and `settlePoolDebt` all take `uint256[] calldata` — the caller
+chooses the length and pays for it. `getSettleableDebt` is a view. The only loop over
+protocol state is `transferPositionOwnership` walking one user's own position list, where
+the cost falls on that user's own transaction.
+
+**A5 — no pause on Locked or Stable Yield.** I grepped the *managers* and found no
+`Pausable`. The *vaults* carry it, which is where deposits and withdrawals are entered:
+`LockedPool` guards 5 functions, `StableYieldPool` 4, `LiquidityPool` 6. The pause exists;
+what was genuinely wrong was who could release it, fixed in #30.
+
+The findings that held up are the ones I verified by reading the whole path or by writing a
+test that failed without the fix. The lesson is in that sentence.
+
+---|---|---|---|
 | C1 | `emergencyRedeem` lets an operator move any holder's value to any address | **Critical** | `StableYieldPool` |
 | A1 | A zero `couponFrequency` permanently freezes a Stable Yield pool | **Critical** | `StableYieldManager` |
 | A2 | Withdrawal queue iterates unbounded — gas DoS | **High** | `StableYieldManager` |
@@ -66,105 +106,6 @@ If the intent was an operational tool to force-exit a sanctioned or compromised 
 that is a different function with a different name, and it should pay into escrow or a
 quarantine address — never to an operator-chosen recipient.
 
-## A1 — A zero `couponFrequency` permanently freezes a Stable Yield pool
-
-### The problem
-
-`addInstrument` ([StableYieldManager.sol:520](src/StableYieldManager.sol#L520)) takes
-`uint8 couponFrequency` and validates the allocation thoroughly — existence, pool match,
-SPV identity, status, expiry, size — but **never validates `couponFrequency` itself**.
-
-NAV then divides by it, twice, in
-[StableYieldNAVLibrary.sol:102 and :108](src/libraries/StableYieldNAVLibrary.sol#L102):
-
-```solidity
-uint256 couponPeriodSeconds = SECONDS_PER_YEAR / instrument.couponFrequency;
-uint256 couponAmount = (instrument.faceValue * instrument.annualCouponRate)
-                     / (10000 * instrument.couponFrequency);
-```
-
-An `INTEREST_BEARING` instrument added with `couponFrequency = 0` makes every NAV
-computation revert. `calculateGrossAssetValue` walks all active instruments, so one bad
-entry poisons the whole calculation.
-
-### What it costs
-
-NAV is on the path of nearly everything. Once it reverts:
-
-- **deposits** revert — `navPerShare` is read to size the mint
-- **withdrawal requests** revert — the same read prices the quote
-- **queue processing** reverts
-- **every view** a frontend or the backend indexer calls reverts
-
-The pool is frozen and **investors cannot exit**.
-
-The only escape is `matureInstrumentWithFunds` ([:606](src/StableYieldManager.sol#L606)),
-the sole path that sets `isActive = false` — and it requires *both*
-`block.timestamp >= instrument.maturityDate` and a non-zero `maturityAmount` from the SPV.
-So the freeze lasts until the bad instrument's maturity date, which the same call chose,
-and then only if the SPV cooperates. A ten-year maturity is a ten-year freeze.
-
-`deactivatePool` ([:780](src/StableYieldManager.sol#L780)) does not help — it stops new
-pool activity but does not stop NAV being read on the exit paths.
-
-This does not require malice. Typing an instrument `INTEREST_BEARING` and passing `0` for a
-zero-coupon holding is an easy mistake, and the transaction succeeds.
-
-### The fix
-
-Reject it at the door, in `addInstrument`:
-
-```solidity
-if (instrumentType == InstrumentType.INTEREST_BEARING) {
-    if (couponFrequency == 0) revert InvalidCouponFrequency();
-    if (annualCouponRate == 0) revert InvalidCouponRate();
-}
-```
-
-And defensively in the NAV library — return `faceValue` with no accrual rather than
-dividing by zero — so one bad row can never take the pool's pricing down with it.
-
-Worth adding an admin path to deactivate an instrument without funds, for exactly this
-class of mistake. Today there is no way to take a bad row out of NAV.
-
----
-
-## A2 — Withdrawal queue iterates unbounded
-
-[StableYieldManager.sol:940 and :999](src/StableYieldManager.sol#L940):
-
-```solidity
-for (uint256 i = queue.head; i < queue.tail; i++) {
-```
-
-Processing walks the entire queue in one transaction. The queue grows with user demand and
-nothing caps it. Past a few hundred entries the loop exceeds the block gas limit and
-**processing can never complete** — the queue is stuck and no one is paid.
-
-It is also cheap to force: a griefer submits many small requests to push the queue past the
-limit.
-
-**Fix:** process a bounded batch and advance `head` across calls. Stop at the first request
-that cannot be funded so ordering is preserved. This is the shape the Rust port uses
-(`MAX_WITHDRAWAL_BATCH`), forced there by Soroban's footprint declaration — but it is a
-live gas-DoS on EVM too.
-
----
-
-## A3 — Position and debt loops iterate unbounded
-
-Six sites: [LockedPoolManager.sol:403, :486](src/LockedPoolManager.sol#L403) and
-[LockedPoolManagerLib.sol:123, :162, :173, :201](src/libraries/LockedPoolManagerLib.sol#L123).
-
-They walk `positionIds`, `allDebtIds` and `oldOwnerPositions`. A depositor with many small
-positions can make their own operations un-runnable; `allDebtIds` is protocol-wide, so if
-that one is on an operator path it is a protocol-level stall.
-
-**Fix:** the same treatment — paginate, or index so the full scan is never needed.
-`allDebtIds` in particular should be settled in batches.
-
----
-
 ## A4 — A fully impaired pool cannot be recapitalised
 
 [StableYieldManager.sol:753](src/StableYieldManager.sol#L753) guards the empty case:
@@ -188,23 +129,6 @@ might want to recapitalise it. Same at [:1046](src/StableYieldManager.sol#L1046)
 worthless pool with a clear error, or floor `navPerShare` at 1 so recapitalisation is
 possible and existing holders are diluted to nothing — which is the economically correct
 outcome, but should be a deliberate choice rather than a revert.
-
----
-
-## A5 — Neither Locked nor Stable Yield has an emergency state or a pause
-
-`Manager` (Single Asset) has `EMERGENCY` status, `cancelPool`, and `whenNotPaused` on its
-entry points. `LockedPoolManager` and `StableYieldManager` have **none of these** — no
-`Pausable`, no `whenNotPaused`, no emergency status. I grepped both.
-
-So if an SPV defaults on a locked pool there is no way to halt redemptions and no
-pro-rating. `LockedPoolEscrow.withdraw` simply reverts once short, and positions redeem
-first-come-first-served until the balance runs out — the same race as `DEFECTS.md` D1,
-reached from a different direction.
-
-**Question before a fix:** is this deliberate — SPV default absorbed by the yield reserve,
-which both pools are wired to — or an oversight? If the reserve is meant to cover it, the
-draw is not automatic today and should be.
 
 ---
 
