@@ -11,7 +11,7 @@ the same cases.
 |---|---|---|---|
 | D1 | Matured redemption over-entitles whoever redeems first | **Critical** | `DepositWithdrawalLibrary._handleMaturedWithdrawWithFee` |
 | D2 | Interest-bearing redemption pot is overstated | **High** | `DepositWithdrawalLibrary.calculateTotalReturns` |
-| D3 | Emergency refunds pay par against a possibly impaired escrow | **High** | `ValidationLibrary.handleEmergencyWithdrawal` |
+| D3 | Emergency refunds pay par against a possibly impaired escrow | **Latent** — see note | `ValidationLibrary.handleEmergencyWithdrawal` |
 | D4 | Validation advertises a redemption path the router rejects | Low | `ValidationLibrary.validateWithdrawal` |
 | D5 | `minimumFundingThreshold` declared as an amount, used as a rate | Informational | `IPoolTypes.PoolConfig` |
 | D6 | The same live divisor in two views | Low | `calculateUserDiscount`, `calculateUserReturn` |
@@ -147,8 +147,15 @@ escrowContract.releaseFunds(receiver, assets);
 Emergency refunds pay one asset per share, unconditionally. That is right when the pool
 never left funding — the escrow holds exactly what was raised.
 
-But `emergencyExit()` is `onlyValidPool` with no status guard, so a pool can enter
-EMERGENCY from **INVESTED**. If the SPV has drawn the capital and defaults, the escrow
+**Corrected after a second read: this is latent, not live.** `emergencyExit()` is
+`onlyValidPool`, meaning only a registered pool contract may call it — and no vault does.
+`LiquidityPool` never calls `manager.emergencyExit()`. Every path that actually reaches
+EMERGENCY today is pre-investment: `closeEpoch` and `forceCloseEpoch` on underfunding, and
+`cancelPool`, which `validatePoolCancellation` restricts to FUNDING. At those points the
+escrow holds exactly `totalRaised`, so par refunds are exactly right.
+
+The defect is therefore in what the code *permits*, not what it does. `emergencyExit()` has
+no status guard, so a pool can enter EMERGENCY from **INVESTED** If the SPV has drawn the capital and defaults, the escrow
 holds less than `totalRaised` while every holder is still entitled to par. First come,
 first served; the rest get nothing. `_emitEmergencyMetrics` reports `totalRaised` as
 `totalRefundable`, which will be wrong in exactly this case.
