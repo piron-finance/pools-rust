@@ -1,13 +1,14 @@
 # Piron Solidity — audit findings
 
 Review of `piron-finance/Liquidity-pool` @ `d8994ce`, all three pool types plus shared
-infrastructure. Separate from `DEFECTS.md`, which covers what the Rust port surfaced in the
+infrastructure, cross-checked against what the backend and the investor app actually call. Separate from `DEFECTS.md`, which covers what the Rust port surfaced in the
 Single Asset redemption path.
 
 Nothing here is fixed. PR #29 covers only the projection bug (D1/D2 in `DEFECTS.md`).
 
 | | Finding | Severity | Contract |
 |---|---|---|---|
+| C1 | `emergencyRedeem` lets an operator move any holder's value to any address | **Critical** | `StableYieldPool` |
 | A1 | A zero `couponFrequency` permanently freezes a Stable Yield pool | **Critical** | `StableYieldManager` |
 | A2 | Withdrawal queue iterates unbounded — gas DoS | **High** | `StableYieldManager` |
 | A3 | Position and debt loops iterate unbounded | **High** | `LockedPoolManager`, `LockedPoolManagerLib` |
@@ -16,6 +17,54 @@ Nothing here is fixed. PR #29 covers only the projection bug (D1/D2 in `DEFECTS.
 | A6 | `timelockController` is immutable with no recovery path | Low | four contracts |
 
 ---
+
+## C1 — `emergencyRedeem` lets an operator move any holder's value to any address
+
+Found by checking what the investor app calls for the non-Single-Asset pools.
+
+### The problem
+
+[StableYieldPool.sol:272](src/managed/StableYieldPool.sol#L272):
+
+```solidity
+function emergencyRedeem(uint256 shares, address receiver, address owner) external returns (uint256 assets) {
+    require(accessManager.hasRole(accessManager.OPERATOR_ROLE(), msg.sender), "StableYieldPool/not operator");
+    ...
+    _burn(owner, actualShares);
+    if (immediate) { escrow.withdraw(receiver, withdrawalValue); ... }
+}
+```
+
+The caller names **both** `owner` and `receiver`, and they need not be the same address.
+There is no allowance check, no signature from `owner`, and no requirement that
+`receiver == owner`.
+
+So anyone holding `OPERATOR_ROLE` can burn any holder's shares and send the proceeds
+anywhere. That is not an emergency redemption, it is a confiscation primitive.
+
+Compare `LiquidityPool.emergencyWithdraw()`, which takes no arguments and acts on
+`msg.sender` — self-service, and correct.
+
+It is also the **only** exit on `StableYieldPool` without `whenNotPaused`. `deposit`,
+`mint`, `withdraw` and `redeem` all carry it. So an operator can exit a chosen holder while
+the pool is frozen to everyone else — the precise asymmetric-freeze hole that lets one
+party out at a stale price while the rest wait for the correction.
+
+The investor app exposes this function via `usePoolExit`.
+
+### The fix
+
+Three changes, all small:
+
+1. **Act on the caller.** Drop `owner`; burn `msg.sender`'s shares. If a delegated exit is
+   genuinely needed, require an ERC-20 allowance from `owner` the way `transferFrom` does.
+2. **Pay the owner.** Require `receiver == owner`, or drop `receiver` entirely. An
+   operator-triggered exit should never choose the destination.
+3. **Add `whenNotPaused`.** A paused pool means paused for everyone.
+
+If the intent was an operational tool to force-exit a sanctioned or compromised holder,
+that is a different function with a different name, and it should pay into escrow or a
+quarantine address — never to an operator-chosen recipient.
 
 ## A1 — A zero `couponFrequency` permanently freezes a Stable Yield pool
 
