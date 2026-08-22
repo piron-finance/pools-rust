@@ -86,46 +86,22 @@ Ported Solidity, and where it went:
 
 ---
 
-## Open questions — decide these before mainnet
+## Defects in the reference — see `DEFECTS.md`
 
-These came out of the port. All three are about the Solidity, so none were fixed here.
+Five findings surfaced by re-deriving the protocol against a second runtime. Three are in
+the redemption path and share one root cause: **a payout computed from state that paying it
+out does not change.** Full analysis, severities and the fix order are in `DEFECTS.md`.
 
-**1. Two `calculateTotalReturns` that disagree.** `CalculationLibrary`'s returns
-`fundsReturnedBySPV + undistributedCoupons`; `DepositWithdrawalLibrary`'s returns
-`actualInvested + totalCouponsReceived`. The first drives the `calculateUserReturn` view;
-the second drives what a redeeming holder is actually paid. For discounted pools they
-agree. **For interest-bearing pools they do not**, so the quoted return and the paid
-return can differ. Both are ported faithfully and the divergence is pinned by
-`the_two_total_returns_disagree_for_interest_bearing_pools` in `tests/lifecycle.rs`.
-*Someone needs to decide which is correct.*
+| | Finding | Severity |
+|---|---|---|
+| D1 | Matured redemption over-entitles whoever redeems first | **Critical** |
+| D2 | Interest-bearing redemption pot is overstated | **High** |
+| D3 | Emergency refunds pay par against a possibly impaired escrow | **High** |
+| D4 | Validation advertises a redemption path the router rejects | Low |
+| D5 | `minimumFundingThreshold` declared as an amount, used as a rate | Informational |
 
-**4. Sequential redeemers are over-entitled at maturity. — highest severity.**
-`_handleMaturedWithdrawWithFee` computes `userEntitlement = userShares * totalReturns /
-totalShares`. `totalShares` falls as holders burn shares; `totalReturns`
-(`actualInvested + totalDiscountEarned`) does not. So with two holders at 60/40, the first
-is paid 60% of the pot and the second is paid **100%** of it. Demonstrated by
-`a_discounted_deal_runs_from_funding_to_redemption` in the contract tests, which asserts
-the real numbers (631,578 then 1,052,631 out of a 1,052,631 pot).
-
-On EVM the escrow bounds the damage — it runs out of balance and `releaseFunds` reverts,
-so the last redeemer is locked out of their money rather than the pool being drained. That
-is still a broken redemption path.
-
-The fix belongs in `src/`: track a distributable balance and decrement it as it is paid,
-or compute entitlement against the share supply as it stood at settlement. Both runtimes
-follow once the reference decides.
-
-**2. A withdrawal branch that can never fire.** `ValidationLibrary.validateWithdrawal`
-permits withdrawal from `INVESTED` once past `maturityDate`, but
-`DepositWithdrawalLibrary.handleWithdraw` rejects `INVESTED` unconditionally. The
-rejection governs. Either the validation is misleading or the routing is missing a case.
-
-**3. `minimumFundingThreshold` is declared `uint256` and used as basis points.**
-Validated `<= 10000` in `Manager.sol:185`, applied as
-`targetRaise * threshold / 10000`. Typed as `u32` in the Rust. Harmless, but the Solidity
-type invites a caller to pass an absolute amount.
-
----
+Each is reproduced by a passing test here, so a fix can be verified against the same cases.
+Fix in the Solidity first: `piron-core` is shared, so one correction reaches both runtimes.
 
 ## Stellar — the queue
 
