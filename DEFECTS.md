@@ -1,6 +1,6 @@
 # Defects found porting Piron to Rust
 
-Five findings in the Solidity reference, surfaced by re-deriving the protocol against a
+Seven findings in the Solidity reference, surfaced by re-deriving the protocol against a
 second runtime. Three are in the redemption path and share one root cause. None have been
 fixed here — `src/` is the reference and these are decisions for whoever owns it.
 
@@ -14,22 +14,38 @@ the same cases.
 | D3 | Emergency refunds pay par against a possibly impaired escrow | **High** | `ValidationLibrary.handleEmergencyWithdrawal` |
 | D4 | Validation advertises a redemption path the router rejects | Low | `ValidationLibrary.validateWithdrawal` |
 | D5 | `minimumFundingThreshold` declared as an amount, used as a rate | Informational | `IPoolTypes.PoolConfig` |
+| D6 | The same live divisor in two views | Low | `calculateUserDiscount`, `calculateUserReturn` |
+| D7 | `claimRefund` unreachable, and would double-burn if wired | Low | `LiquidityPool.claimRefund` |
 
 ---
 
-## The root cause behind D1, D2 and D3
+## Each pool type prices differently, and only one of them uses NAV
 
-**A payout is computed from state that paying it out does not change.**
+Getting this straight first, because conflating them is what produced a wrong diagnosis in
+the first draft of this document.
 
-Redemption divides a pot by the share supply. The supply falls as shares burn. The pot is
-recomputed each call from pool fields — `actualInvested`, `totalDiscountEarned`,
-`totalRaised` — that redemption never touches. So the value of a share rises every time
-someone leaves, and the pool promises more than it holds.
+| Pool type | What a holding is | How it is priced |
+|---|---|---|
+| **Single Asset** | A fixed fractional claim on **one settlement** | `userShares / sharesAtSettlement` of the pot. No mark-to-market, no moving per-share price. The fraction is fixed the moment funding closes, because nothing mints afterwards. |
+| **Locked** | A **discrete position** with its own term and rate | `expectedMaturityPayout`, computed at deposit. Never divided by anything. Correct by construction. |
+| **Stable Yield** | A share of a **revolving portfolio** | `nav_per_share`, recomputed from live holdings. **This is the only pool type where NAV means anything.** |
 
-Stable Yield does not have this bug, and the reason is instructive: it prices against
-`nav_per_share`, which is derived from what the escrow actually holds. Paying someone out
-lowers the escrow balance, so the price falls with the supply and the arithmetic stays
-honest without anyone maintaining it. **Single Asset should work the same way.**
+## The root cause behind D1 and D3
+
+**A divisor that the deal fixes is read live instead.**
+
+Redemption in a Single Asset pool divides the settlement pot by `totalSupply()`. But a
+Single Asset pool mints nothing after funding closes, so each holder's fraction is a
+constant of the deal. Reading `totalSupply()` at redemption time reads a number that moves
+for a reason unrelated to entitlement — other people leaving.
+
+The pot does not move with it: `actualInvested` and `totalDiscountEarned` are never
+decremented by a withdrawal. So the quotient climbs.
+
+This is not a NAV problem and the fix is not a NAV. Stable Yield's live pricing is correct
+*for Stable Yield* precisely because its numerator is live too — paying someone out lowers
+the escrow balance, so both terms fall together. Single Asset has no live numerator and
+needs none. It needs a constant denominator.
 
 ---
 
@@ -69,22 +85,20 @@ the escrow refused with `#502 InsufficientBalance`. Test:
 
 ### The fix
 
-**Snapshot both terms at settlement.** In `processMaturity`, record the distributable pot
-and the share supply as they stand, and divide by those fixed numbers forever after:
+**Record the share supply at settlement and divide by that.** In `processMaturity`:
 
 ```
-distributableAtMaturity = totalReturns
-sharesAtMaturity        = IERC20(pool).totalSupply()
+sharesAtMaturity = IERC20(pool).totalSupply();   // the deal's denominator, fixed here
 
-userEntitlement = userShares * distributableAtMaturity / sharesAtMaturity
+userEntitlement = userShares * totalReturns / sharesAtMaturity;
 ```
 
-Neither term moves, so entitlements sum to exactly the pot regardless of who redeems when,
-and ordering stops mattering. It needs two new fields and no bookkeeping on the hot path.
+One new field. Entitlements then sum to exactly the pot no matter who redeems when, and
+ordering stops mattering. Snapshotting the pot alongside it costs nothing and makes the
+invariant obvious at a glance, but the supply is the term that actually has to stop moving.
 
-The alternative — decrementing a running `remainingDistributable` as it is paid — is also
-correct, because numerator and denominator then fall together. It costs a write per
-redemption and one more invariant to hold. Prefer the snapshot.
+No NAV, no per-share price, no mark-to-market — none of which a fixed-term single-instrument
+deal has any use for.
 
 ---
 
@@ -143,9 +157,10 @@ first served; the rest get nothing. `_emitEmergencyMetrics` reports `totalRaised
 
 Two changes, both small:
 
-1. **Pro-rate against what is actually recoverable.** Snapshot the escrow balance when
-   EMERGENCY is entered and divide it by the supply at that moment — the same shape as the
-   D1 fix. Where nothing was lost this is par, so the funding-stage behaviour is unchanged.
+1. **Pro-rate against what is actually recoverable.** Record the escrow balance and the
+   share supply when EMERGENCY is entered, and divide one by the other — the same fixed
+   denominator as D1, for the same reason. Where nothing was lost this is exactly par, so
+   funding-stage behaviour is unchanged.
 2. **Report the truth.** `_emitEmergencyMetrics` should emit the recoverable balance, not
    `totalRaised`.
 
@@ -154,6 +169,43 @@ difference lands on the protocol rather than on whichever investor was slowest. 
 emergency path to draw on it before pro-rating.
 
 ---
+
+## D6 — The same live divisor appears in two more places
+
+Found on a second read of the same pattern:
+
+- **`Manager.calculateUserDiscount`** — `userShares * totalDiscountEarned / totalShares`.
+  Identical shape to D1. It is a view, so it misreports rather than mispays: the discount
+  a remaining holder is shown climbs as others redeem.
+- **`CalculationLibrary.calculateUserReturn`, EMERGENCY branch** —
+  `userShares * totalRaised / totalShares`. Same shape, same effect on the quote. The
+  emergency *payment* is par, so the two disagree once anyone has exited.
+
+Both take the same fix as D1: divide by the supply as of the event, not as of the call.
+
+## D7 — `claimRefund` is unreachable, and would double-burn if it were not
+
+`LiquidityPool.claimRefund` requires `pendingRefunds[msg.sender] > 0`. Nothing ever
+populates it — `setPendingRefund` is `onlyManager` and the Manager never calls it. The same
+is true of `setDiscountAccrued` and `discountedBillsAccrued`.
+
+So the path is dead. But it is dead in a way that matters, because it burns twice:
+
+```solidity
+_burn(msg.sender, sharesToBurn);                                  // burns here
+IPoolManager(manager).handleWithdraw(address(this), refundAmount, ...);  // and again inside
+```
+
+`handleEmergencyWithdrawal` burns `assets` worth of shares of its own. If anyone ever wires
+`setPendingRefund` up, this becomes a live double-burn.
+
+**Fix:** either delete `claimRefund`, `setPendingRefund`, `setDiscountAccrued` and their
+state, or wire them and remove one of the two burns. Leaving half-built machinery in a
+custody contract is the worst of the three options.
+
+**Useful side effect of this finding:** because discount is *never* claimed separately, the
+discounted redemption pot `actualInvested + totalDiscountEarned` does **not** double-count.
+D2 is an interest-bearing problem only.
 
 ## D4 — Validation advertises a path the router rejects
 
@@ -192,9 +244,10 @@ three times.
 | Order | Do | Why first |
 |---|---|---|
 | 1 | **D2** — delete the duplicate `calculateTotalReturns` | Smallest change, and it decides what the pot *is* before D1 decides how to divide it |
-| 2 | **D1** — snapshot pot and supply at settlement | The critical one; depends on D2 being settled |
-| 3 | **D3** — pro-rate emergency refunds, wire the reserve | Same shape as D1, so do it while the pattern is fresh |
-| 4 | **D4, D5** — dead code and the type | Cosmetic, no behaviour change, cheap to batch |
+| 2 | **D1 + D6** — fix the divisor everywhere it is read live | The critical one; all three sites take the same one-line change |
+| 3 | **D3** — pro-rate emergency refunds, wire the reserve | Same fixed-denominator fix, so do it while the pattern is fresh |
+| 4 | **D7** — decide the fate of the refund and discount machinery | Needs a product decision, not just a code change |
+| 5 | **D4, D5** — dead code and the type | No behaviour change, cheap to batch |
 
 Then, per change:
 
@@ -212,3 +265,23 @@ The three redemption defects would all have been caught by one invariant test:
 **the sum of what every holder can redeem never exceeds what the pool holds.** Assert it
 after settlement, after each redemption, and in the emergency path. It is cheap, and it is
 the property that actually matters.
+
+
+---
+
+## Open questions for the protocol owner
+
+Three things the code cannot tell me, where the right fix depends on what was intended.
+
+1. **Was the discount meant to be claimable separately, like coupons?** `setDiscountAccrued`
+   and `discountedBillsAccrued` exist and are wired into the vault but never called. If the
+   intent is a separate claim, discounted pools acquire D2's double-count the moment it is
+   turned on, and the redemption pot needs the same `received − distributed` treatment.
+
+2. **Should `emergencyExit()` be callable from `INVESTED`?** It currently has no status
+   guard. If a mid-deal emergency is intended — SPV default, say — then D3's pro-rating is
+   required. If it was only ever meant for a failed funding round, adding the guard is the
+   simpler fix and D3 largely goes away.
+
+3. **Is the `pendingRefunds` path meant to go live?** If yes, the double-burn has to be
+   fixed first. If no, deleting it removes a trap.
