@@ -33,19 +33,25 @@ python3 parity/check.py               # has the Solidity moved under us?
 | | State |
 |---|---|
 | Repo | This one. The Solidity reference is a separate repository; `make parity` reads it and never writes to it. |
-| Toolchain | Rust 1.98.0, `wasm32v1-none`, soroban-sdk 27.0.6, stellar-cli 27.1.0. |
-| `piron-core` | All three pool types plus governance. 155 tests. `no_std`, zero dependencies, allocation-free, no chain types. |
-| `piron-types` | Soroban wire types, shared by the managers and the factory. Contains no contract, by design. |
-| `access-manager` | 23KB, 20 tests. Seven roles, 24h grant timelock, multisig execution, pause. |
-| `pool-registry` | 22KB, 13 tests. Pools, approved assets, vetted SPVs. |
-| `fee-manager` | 23KB, 10 tests. Per-type splits, per-asset accounting, distribution. |
-| `pool-escrow` | 12KB, 7 tests. Segregated custody, manager-only releases. |
-| `pool-factory` | 34KB, 11 tests. Deterministic deployment of all three pool types. |
-| `single-asset-manager` | 58KB, 21 tests. |
-| `locked-pool-manager` | 48KB, 24 tests. |
-| `stable-yield-manager` | 48KB, 21 tests. |
+| `piron-core` | All three pool types, governance, upgrades, reserve. `no_std`, zero dependencies, allocation-free. |
+| `access-manager` | Seven roles, 24h grant timelock, multisig execution, pause. |
+| `upgrade-timelock` | 72h upgrade delay, 7-day window, guardian brake that lapses after 30 days. |
+| `pool-registry` | Pools, approved assets, vetted SPVs. |
+| `fee-manager` | Per-type splits, per-asset accounting, distribution. |
+| `yield-reserve` | Loan facility, shortfall cover, treasury sweeps, floor discipline. |
+| `pool-escrow` | Segregated custody, manager-only releases. |
+| `pool-share` | SEP-41 share token. Positions are transferable. |
+| `pool-factory` | Deterministic deployment of manager, escrow and share token together. |
+| `single-asset-manager` · `locked-pool-manager` · `stable-yield-manager` | The three pool types. |
 | `solana/single-asset` | Binding scaffold against the same core. Excluded pending an Anchor pin. |
-| Deployment | **Live on testnet**, built through the factory. `make deploy`. |
+| Deployment | **Live on testnet.** `make deploy`. |
+
+**348 tests, 11 contracts, zero warnings.**
+
+Stellar is feature-complete against the Solidity: every component in the reference
+architecture has a counterpart, including the ones that were missing a cycle ago —
+upgradeability behind a timelock, the yield reserve, and transferable shares.
+
 
 **276 tests, 8 contracts, zero warnings.**
 
@@ -199,6 +205,23 @@ exactly.
 Per-fee-type splits validated to total exactly 100%, split at collection so a policy change
 never re-cuts money already taken, ops absorbing truncation so the parts always sum back to
 the whole.
+
+### ~~Upgradeability~~ · **done**
+Every contract names the timelock as its upgrader, once and irrevocably. Nothing in the
+system can have its bytecode replaced without 72 hours' notice, a 7-day execution window,
+multisig execution by a different hand than scheduled it, and a guardian able to stop it —
+for at most 30 days, after which the brake lapses so a lost key cannot freeze governance.
+
+### ~~Yield reserve~~ · **done**
+`yield-reserve`. Lends to a pool that owes a redemption before its capital is back, absorbs
+a shortfall so it lands on the protocol rather than the last investor out, and sweeps real
+surplus to the treasury. Lending and sweeping stop at the floor; covering a loss may go
+below it, deliberately.
+
+### ~~Transferable shares~~ · **done**
+`pool-share`, a SEP-41 token per pool. Only the manager mints or burns; holders transfer,
+approve and delegate. Verified on testnet by moving half a live position to another
+account and having the manager agree about the new balance.
 
 ### S9. TTL keeper
 S9 is a backend job, not a contract: it extends TTLs on positions no user has touched, and

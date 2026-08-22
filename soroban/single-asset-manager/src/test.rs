@@ -5,6 +5,7 @@
 //! lifecycle holds together across calls.
 
 use pool_escrow::{PoolEscrow, PoolEscrowClient};
+use pool_share::{Metadata, PoolShare, PoolShareClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
 use soroban_sdk::{Address, Env, String, Vec};
@@ -19,6 +20,7 @@ struct Fixture {
     env: Env,
     client: SingleAssetManagerClient<'static>,
     escrow: PoolEscrowClient<'static>,
+    share: PoolShareClient<'static>,
     token: TokenClient<'static>,
     investor: Address,
     other: Address,
@@ -96,17 +98,46 @@ fn setup_with(config_for: fn(&Env) -> StoredConfig) -> Fixture {
         treasury: treasury.clone(),
     };
 
+    // The share token names its manager, so it needs the manager's address; registering
+    // the manager first and the token second keeps the test honest about the ordering the
+    // factory solves with a salt.
+    let share_id = env.register(
+        PoolShare,
+        (
+            Address::generate(&env),
+            Metadata {
+                name: soroban_sdk::String::from_str(&env, "Piron Share"),
+                symbol: soroban_sdk::String::from_str(&env, "pS"),
+                decimals: 7u32,
+            },
+        ),
+    );
     let id = env.register(
         SingleAssetManager,
-        (config_for(&env), roles, escrow_id.clone()),
+        (config_for(&env), roles, escrow_id.clone(), share_id.clone()),
     );
     escrow.bind_manager(&id);
+    // Re-register the token now that the manager exists, bound to it.
+    let share_id = env.register_at(
+        &share_id,
+        PoolShare,
+        (
+            id.clone(),
+            Metadata {
+                name: soroban_sdk::String::from_str(&env, "Piron Share"),
+                symbol: soroban_sdk::String::from_str(&env, "pS"),
+                decimals: 7u32,
+            },
+        ),
+    );
+    let share = PoolShareClient::new(&env, &share_id);
     let client = SingleAssetManagerClient::new(&env, &id);
 
     Fixture {
         env,
         client,
         escrow,
+        share,
         token,
         investor,
         other,
@@ -115,6 +146,13 @@ fn setup_with(config_for: fn(&Env) -> StoredConfig) -> Fixture {
         spv,
         emergency,
         treasury,
+    }
+}
+
+fn discounted_config_with_fee(env: &Env) -> StoredConfig {
+    StoredConfig {
+        withdrawal_fee_bps: 50, // 0.5%
+        ..discounted_config(env)
     }
 }
 
@@ -394,48 +432,20 @@ fn an_underfunded_epoch_goes_to_emergency_and_refunds_at_par() {
 
 #[test]
 fn a_withdrawal_fee_is_taken_from_the_redemption() {
-    let env = Env::default();
-    env.mock_all_auths();
-    env.ledger().set_timestamp(100);
+    let f = setup_with(discounted_config_with_fee);
 
-    let admin = Address::generate(&env);
-    let investor = Address::generate(&env);
-    let treasury = Address::generate(&env);
-    let issuer = Address::generate(&env);
-    let asset = env.register_stellar_asset_contract_v2(issuer);
-    let token = TokenClient::new(&env, &asset.address());
-    StellarAssetClient::new(&env, &asset.address()).mint(&admin, &2_000_000);
-    StellarAssetClient::new(&env, &asset.address()).mint(&investor, &2_000_000);
-
-    let escrow_id = env.register(PoolEscrow, (admin.clone(), asset.address()));
-    let escrow = PoolEscrowClient::new(&env, &escrow_id);
-
-    let roles = Roles {
-        admin: admin.clone(),
-        operator: admin.clone(),
-        spv: admin.clone(),
-        emergency: admin.clone(),
-        treasury: treasury.clone(),
-    };
-    let mut config = discounted_config(&env);
-    config.withdrawal_fee_bps = 50; // 0.5%
-
-    let id = env.register(SingleAssetManager, (config, roles, escrow_id));
-    escrow.bind_manager(&id);
-    let client = SingleAssetManagerClient::new(&env, &id);
-
-    client.deposit(&investor, &TARGET);
-    client.force_close_epoch(&admin);
-    client.confirm_investment(&admin, &TARGET, &String::from_str(&env, "p"));
-    env.ledger().set_timestamp(MATURITY);
-    client.settle_maturity(&admin, &1_052_631);
+    f.client.deposit(&f.investor, &TARGET);
+    f.client.force_close_epoch(&f.admin);
+    f.client.withdraw_for_investment(&f.spv, &TARGET);
+    f.client
+        .confirm_investment(&f.spv, &TARGET, &String::from_str(&f.env, "p"));
+    f.env.ledger().set_timestamp(MATURITY);
+    f.client.settle_maturity(&f.spv, &1_052_631);
 
     // Sole holder: gross 1,052,631, fee 5,263, net 1,047,368.
-    assert_eq!(client.withdraw(&investor, &1), 1_047_368);
-    assert_eq!(token.balance(&treasury), 5_263);
+    assert_eq!(f.client.withdraw(&f.investor, &1), 1_047_368);
+    assert_eq!(f.token.balance(&f.treasury), 5_263);
 }
-
-// ---------------------------------------------------------------- coupons
 
 #[test]
 fn an_interest_bearing_deal_pays_coupons_pro_rata() {
@@ -529,4 +539,57 @@ fn a_position_survives_past_the_default_entry_lifetime() {
 
     assert_eq!(f.client.shares_of(&f.investor), 400_000);
     assert_eq!(f.client.total_supply(), 400_000);
+}
+
+// ---------------------------------------------------------------- transferability
+
+#[test]
+fn a_position_can_change_hands_and_the_new_holder_redeems_it() {
+    // The reason shares are a token rather than a number in this contract's storage.
+    let f = setup();
+    f.client.deposit(&f.investor, &TARGET);
+    assert_eq!(f.share.balance(&f.investor), TARGET);
+
+    // Sold, gifted, or moved into custody — the manager is not consulted.
+    f.share.transfer(&f.investor, &f.other, &TARGET);
+    assert_eq!(f.client.shares_of(&f.investor), 0);
+    assert_eq!(f.client.shares_of(&f.other), TARGET);
+
+    f.client.force_close_epoch(&f.admin);
+    f.client.withdraw_for_investment(&f.spv, &TARGET);
+    f.client
+        .confirm_investment(&f.spv, &TARGET, &String::from_str(&f.env, "p"));
+    f.env.ledger().set_timestamp(MATURITY);
+    f.client.settle_maturity(&f.spv, &1_052_631);
+
+    // The buyer redeems, and the seller has nothing left to redeem.
+    assert_eq!(f.client.withdraw(&f.other, &1), 1_052_631);
+    assert_eq!(
+        f.client.try_withdraw(&f.investor, &1),
+        Err(Ok(Error::NoShares))
+    );
+}
+
+#[test]
+fn a_partial_sale_splits_the_claim_proportionally() {
+    let f = setup();
+    f.client.deposit(&f.investor, &TARGET);
+    f.share.transfer(&f.investor, &f.other, &400_000);
+
+    f.client.force_close_epoch(&f.admin);
+    f.client.withdraw_for_investment(&f.spv, &TARGET);
+    f.client
+        .confirm_investment(&f.spv, &TARGET, &String::from_str(&f.env, "p"));
+    f.env.ledger().set_timestamp(MATURITY);
+    f.client.settle_maturity(&f.spv, &1_052_631);
+
+    // 60/40 of the settlement, in the order they redeem.
+    assert_eq!(f.client.withdraw(&f.investor, &1), 631_578);
+}
+
+#[test]
+fn the_manager_alone_can_issue_shares() {
+    // A holder who could mint could claim assets nobody deposited.
+    let f = setup();
+    assert_eq!(f.share.manager(), f.client.address);
 }

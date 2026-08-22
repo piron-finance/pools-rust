@@ -833,6 +833,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "total_invested"
+                            },
+                            "val": {
+                              "i128": "0"
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "total_positions"
                             },
                             "val": {

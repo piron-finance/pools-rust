@@ -366,3 +366,59 @@ fn an_unknown_position_is_reported_not_invented() {
     // Compared loosely because StoredPosition carries no Debug in the contract build.
     assert!(f.client.try_position(&999).is_err());
 }
+
+// ---------------------------------------------------------------- spv allocation
+
+#[test]
+fn only_uncommitted_cash_can_go_to_the_spv() {
+    let f = setup();
+    // 500,000 sponsor float plus a 1,000,000 deposit owing 1,059,178 at maturity.
+    let id = f.client.deposit(&f.investor, &PRINCIPAL, &0, &1);
+    let _ = id;
+
+    // Held 1,500,000, committed 1,059,178 — the rest is free.
+    assert_eq!(f.client.deployable(), 1_500_000 - (PRINCIPAL + INTEREST));
+
+    let free = f.client.deployable();
+    assert_eq!(
+        f.client.try_deploy_to_spv(&f.admin, &(free + 1)),
+        Err(Ok(Error::InsufficientLiquidity))
+    );
+    f.client.deploy_to_spv(&f.admin, &free);
+    assert_eq!(f.client.deployable(), 0);
+}
+
+#[test]
+fn returning_capital_frees_it_again() {
+    let f = setup();
+    f.client.deposit(&f.investor, &PRINCIPAL, &0, &1);
+    let free = f.client.deployable();
+    f.client.deploy_to_spv(&f.admin, &free);
+
+    f.client.return_from_spv(&f.admin, &free);
+    assert_eq!(f.client.deployable(), free);
+    assert_eq!(f.client.pool_metrics().total_invested, 0);
+}
+
+#[test]
+fn a_committed_pool_will_not_send_out_what_it_owes() {
+    let f = setup();
+    // Every position's payout stays covered, whatever the SPV asks for.
+    f.client.deposit(&f.investor, &PRINCIPAL, &0, &1);
+    let free = f.client.deployable();
+    f.client.deploy_to_spv(&f.admin, &free);
+
+    f.env.ledger().set_timestamp(START + TERM);
+    // The redemption still pays in full, because the pool never lent out its cover.
+    assert_eq!(f.client.redeem(&f.investor, &1), PRINCIPAL + INTEREST);
+}
+
+#[test]
+fn only_the_spv_role_moves_capital() {
+    let f = setup();
+    f.client.deposit(&f.investor, &PRINCIPAL, &0, &1);
+    assert_eq!(
+        f.client.try_deploy_to_spv(&f.investor, &1_000),
+        Err(Ok(Error::Unauthorized))
+    );
+}

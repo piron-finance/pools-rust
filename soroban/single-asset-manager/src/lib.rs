@@ -103,10 +103,20 @@ pub enum Error {
     ProtocolPaused = 614,
     UnknownRole = 615,
     UnknownFeeType = 616,
+    UpgradeDelayNotElapsed = 617,
+    UpgradeExpired = 618,
+    UpgradeAlreadyExecuted = 619,
+    UpgradeCancelled = 620,
+    UpgradesPaused = 621,
+    UpgradeNotFound = 622,
+    ReserveFloorBreached = 623,
+    RepaymentExceedsLoan = 624,
+    InsufficientReserve = 625,
     /// Binding-layer only.
     NotInitialized = 700,
     Unauthorized = 701,
     AlreadyInitialized = 702,
+    AlreadyBound = 715,
 }
 
 impl From<piron_core::Error> for Error {
@@ -190,6 +200,15 @@ impl From<piron_core::Error> for Error {
             piron_core::Error::ProtocolPaused => Error::ProtocolPaused,
             piron_core::Error::UnknownRole => Error::UnknownRole,
             piron_core::Error::UnknownFeeType => Error::UnknownFeeType,
+            piron_core::Error::UpgradeDelayNotElapsed => Error::UpgradeDelayNotElapsed,
+            piron_core::Error::UpgradeExpired => Error::UpgradeExpired,
+            piron_core::Error::UpgradeAlreadyExecuted => Error::UpgradeAlreadyExecuted,
+            piron_core::Error::UpgradeCancelled => Error::UpgradeCancelled,
+            piron_core::Error::UpgradesPaused => Error::UpgradesPaused,
+            piron_core::Error::UpgradeNotFound => Error::UpgradeNotFound,
+            piron_core::Error::ReserveFloorBreached => Error::ReserveFloorBreached,
+            piron_core::Error::RepaymentExceedsLoan => Error::RepaymentExceedsLoan,
+            piron_core::Error::InsufficientReserve => Error::InsufficientReserve,
         }
     }
 }
@@ -306,6 +325,17 @@ pub trait Escrow {
     fn release(env: Env, to: Address, amount: i128);
 }
 
+
+/// The pool's share token. Holdings live there, not in this contract's storage, so a
+/// position can be transferred, custodied or posted as collateral.
+#[contractclient(name = "ShareClient")]
+pub trait Share {
+    fn mint(env: Env, to: Address, amount: i128);
+    fn burn(env: Env, from: Address, amount: i128);
+    fn balance(env: Env, id: Address) -> i128;
+    fn total_supply(env: Env) -> i128;
+}
+
 #[contract]
 pub struct SingleAssetManager;
 
@@ -322,6 +352,7 @@ impl SingleAssetManager {
         config: StoredConfig,
         roles: Roles,
         escrow: Address,
+        share: Address,
     ) -> Result<(), Error> {
         let core_config = config.to_core()?;
         validate::validate_config(&core_config)?;
@@ -329,7 +360,7 @@ impl SingleAssetManager {
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage().instance().set(&DataKey::Roles, &roles);
         env.storage().instance().set(&DataKey::Escrow, &escrow);
-        env.storage().instance().set(&DataKey::TotalShares, &0i128);
+        env.storage().instance().set(&DataKey::Vault, &share);
         env.storage().instance().set(
             &DataKey::State,
             &StoredState {
@@ -525,7 +556,7 @@ impl SingleAssetManager {
         let mut user = read_user(&env, &holder);
         let claim = calc::claim_coupon(
             &data,
-            read_shares(&env, &holder),
+            Self::held_by(&env, &holder),
             Self::total_shares(&env),
             user.coupons_claimed,
         )?;
@@ -591,7 +622,7 @@ impl SingleAssetManager {
         bump_instance(&env);
 
         let data = Self::load(&env)?;
-        let user_shares = read_shares(&env, &owner);
+        let user_shares = Self::held_by(&env, &owner);
         let outcome = flow::withdraw(
             &data,
             flow::WithdrawRequest {
@@ -696,7 +727,7 @@ impl SingleAssetManager {
         let data = Self::load(&env)?;
         Ok(calc::user_return(
             &data,
-            read_shares(&env, &who),
+            Self::held_by(&env, &who),
             Self::total_shares(&env),
             env.ledger().timestamp(),
         )?)
@@ -707,14 +738,22 @@ impl SingleAssetManager {
         let user = read_user(&env, &who);
         Ok(calc::available_coupon(
             &data,
-            read_shares(&env, &who),
+            Self::held_by(&env, &who),
             Self::total_shares(&env),
             user.coupons_claimed,
         ))
     }
 
+    /// Convenience passthrough; the token is the source of truth.
     pub fn shares_of(env: Env, who: Address) -> i128 {
-        read_shares(&env, &who)
+        Self::held_by(&env, &who)
+    }
+
+    pub fn share_token(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Vault)
+            .ok_or(Error::NotInitialized)
     }
 
     pub fn total_supply(env: Env) -> i128 {
@@ -765,36 +804,31 @@ impl SingleAssetManager {
         Ok(close.new_status as u32)
     }
 
+    fn share(env: &Env) -> Result<ShareClient<'_>, Error> {
+        let address: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Vault)
+            .ok_or(Error::NotInitialized)?;
+        Ok(ShareClient::new(env, &address))
+    }
+
     fn credit_shares(env: &Env, who: &Address, amount: i128) -> Result<(), Error> {
-        let balance = read_shares(env, who).checked_add(amount).ok_or(Error::Overflow)?;
-        write_shares(env, who, balance);
-        let total = Self::total_shares(env)
-            .checked_add(amount)
-            .ok_or(Error::Overflow)?;
-        env.storage().instance().set(&DataKey::TotalShares, &total);
+        Self::share(env)?.mint(who, &amount);
         Ok(())
     }
 
     fn debit_shares(env: &Env, who: &Address, amount: i128) -> Result<(), Error> {
-        let balance = read_shares(env, who)
-            .checked_sub(amount)
-            .ok_or(Error::InsufficientShares)?;
-        if balance < 0 {
-            return Err(Error::InsufficientShares);
-        }
-        write_shares(env, who, balance);
-        let total = Self::total_shares(env)
-            .checked_sub(amount)
-            .ok_or(Error::Overflow)?;
-        env.storage().instance().set(&DataKey::TotalShares, &total);
+        Self::share(env)?.burn(who, &amount);
         Ok(())
     }
 
     fn total_shares(env: &Env) -> i128 {
-        env.storage()
-            .instance()
-            .get(&DataKey::TotalShares)
-            .unwrap_or(0i128)
+        Self::share(env).map(|s| s.total_supply()).unwrap_or(0)
+    }
+
+    fn held_by(env: &Env, who: &Address) -> i128 {
+        Self::share(env).map(|s| s.balance(who)).unwrap_or(0)
     }
 
     fn require_role(env: &Env, caller: &Address, kind: RoleKind) -> Result<(), Error> {
@@ -884,6 +918,39 @@ fn status_from_u32(value: u32) -> PoolStatus {
         4 => PoolStatus::Matured,
         5 => PoolStatus::Withdrawn,
         _ => PoolStatus::Emergency,
+    }
+}
+
+
+// ---------------------------------------------------------------- upgrades
+//
+// Soroban contracts replace their own bytecode; there is no proxy. So each one names an
+// upgrader once — in production the timelock — and only that address can swap the code.
+// The 72-hour delay and the guardian's brake live there, in front of every upgrade in the
+// system.
+
+#[contractimpl]
+impl SingleAssetManager {
+    /// Names the contract permitted to upgrade this one. Callable once.
+    ///
+    /// One-way on purpose: a contract whose upgrader could be repointed has no timelock,
+    /// only the appearance of one.
+    pub fn bind_upgrader(env: Env, caller: Address, upgrader: Address) -> Result<(), Error> {
+        Self::require_role(&env, &caller, RoleKind::Admin)?;
+        piron_types::upgradeable::bind(&env, &upgrader).map_err(|_| Error::AlreadyBound)
+    }
+
+    /// Replaces this contract's code. Only the bound upgrader may call it.
+    pub fn upgrade(env: Env, wasm_hash: soroban_sdk::BytesN<32>) -> Result<(), Error> {
+        piron_types::upgradeable::perform(&env, wasm_hash).map_err(|e| match e {
+            piron_types::upgradeable::UpgradeError::NotBound => Error::NotInitialized,
+            piron_types::upgradeable::UpgradeError::AlreadyBound => Error::AlreadyBound,
+        })
+    }
+
+    /// Who may upgrade this contract, if anyone yet.
+    pub fn upgrader(env: Env) -> Option<Address> {
+        piron_types::upgradeable::upgrader(&env)
     }
 }
 

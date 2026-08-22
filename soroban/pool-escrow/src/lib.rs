@@ -169,6 +169,21 @@ impl PoolEscrow {
             .ok_or(Error::NotInitialized)
     }
 
+    /// The address that created this escrow, and the only one that may name its
+    /// upgrader.
+    fn require_deployer(env: &Env, caller: &Address) -> Result<(), Error> {
+        let deployer: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Deployer)
+            .ok_or(Error::NotInitialized)?;
+        caller.require_auth();
+        if *caller != deployer {
+            return Err(Error::NotManager);
+        }
+        Ok(())
+    }
+
     /// Every mutating path goes through here. The manager is a contract address, so
     /// `require_auth` succeeds only inside a call the manager itself made.
     fn require_manager(env: &Env) -> Result<(), Error> {
@@ -180,6 +195,39 @@ impl PoolEscrow {
         manager.require_auth();
         env.storage().instance().extend_ttl(THRESHOLD, BUMP);
         Ok(())
+    }
+}
+
+
+// ---------------------------------------------------------------- upgrades
+//
+// Soroban contracts replace their own bytecode; there is no proxy. So each one names an
+// upgrader once — in production the timelock — and only that address can swap the code.
+// The 72-hour delay and the guardian's brake live there, in front of every upgrade in the
+// system.
+
+#[contractimpl]
+impl PoolEscrow {
+    /// Names the contract permitted to upgrade this one. Callable once.
+    ///
+    /// One-way on purpose: a contract whose upgrader could be repointed has no timelock,
+    /// only the appearance of one.
+    pub fn bind_upgrader(env: Env, caller: Address, upgrader: Address) -> Result<(), Error> {
+        Self::require_deployer(&env, &caller)?;
+        piron_types::upgradeable::bind(&env, &upgrader).map_err(|_| Error::AlreadyBound)
+    }
+
+    /// Replaces this contract's code. Only the bound upgrader may call it.
+    pub fn upgrade(env: Env, wasm_hash: soroban_sdk::BytesN<32>) -> Result<(), Error> {
+        piron_types::upgradeable::perform(&env, wasm_hash).map_err(|e| match e {
+            piron_types::upgradeable::UpgradeError::NotBound => Error::NotInitialized,
+            piron_types::upgradeable::UpgradeError::AlreadyBound => Error::AlreadyBound,
+        })
+    }
+
+    /// Who may upgrade this contract, if anyone yet.
+    pub fn upgrader(env: Env) -> Option<Address> {
+        piron_types::upgradeable::upgrader(&env)
     }
 }
 

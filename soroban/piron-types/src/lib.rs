@@ -219,6 +219,8 @@ pub struct StoredMetrics {
     pub total_interest_committed: i128,
     pub total_interest_paid_upfront: i128,
     pub interest_pending_maturity: i128,
+    /// Capital currently with the SPV.
+    pub total_invested: i128,
     pub active_positions: u32,
     pub total_positions: u32,
 }
@@ -230,6 +232,7 @@ impl StoredMetrics {
             total_interest_committed: 0,
             total_interest_paid_upfront: 0,
             interest_pending_maturity: 0,
+            total_invested: 0,
             active_positions: 0,
             total_positions: 0,
         }
@@ -382,3 +385,50 @@ pub fn saturating_add(a: i128, b: i128) -> i128 {
 /// Unused elsewhere; keeps `Env` in scope for the macro expansions above.
 #[allow(dead_code)]
 fn _env_marker(_: &Env) {}
+
+/// The upgrade hook every Piron contract carries.
+///
+/// Soroban contracts replace their own bytecode — there is no proxy — so "who may upgrade
+/// this" is a question each contract answers for itself. Each one names an upgrader once
+/// and thereafter only that address can swap the code. In production the upgrader is the
+/// timelock, which is what puts the 72-hour delay and the guardian's brake in front of
+/// every upgrade in the system.
+///
+/// Binding is one-way. A contract whose upgrader could be repointed has no timelock at
+/// all, only the appearance of one.
+pub mod upgradeable {
+    use soroban_sdk::{symbol_short, Address, BytesN, Env, Symbol};
+
+    const UPGRADER: Symbol = symbol_short!("upgrader");
+
+    /// Names the upgrader. Fails if one is already set.
+    pub fn bind(env: &Env, upgrader: &Address) -> Result<(), UpgradeError> {
+        if env.storage().instance().has(&UPGRADER) {
+            return Err(UpgradeError::AlreadyBound);
+        }
+        env.storage().instance().set(&UPGRADER, upgrader);
+        Ok(())
+    }
+
+    pub fn upgrader(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&UPGRADER)
+    }
+
+    /// Replaces this contract's code. Only the bound upgrader may call it.
+    pub fn perform(env: &Env, wasm_hash: BytesN<32>) -> Result<(), UpgradeError> {
+        let who: Address = env
+            .storage()
+            .instance()
+            .get(&UPGRADER)
+            .ok_or(UpgradeError::NotBound)?;
+        who.require_auth();
+        env.deployer().update_current_contract_wasm(wasm_hash);
+        Ok(())
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum UpgradeError {
+        NotBound,
+        AlreadyBound,
+    }
+}

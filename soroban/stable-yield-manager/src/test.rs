@@ -4,6 +4,7 @@
 //! custody, the holding period and the batched queue hold together across calls.
 
 use pool_escrow::{PoolEscrow, PoolEscrowClient};
+use pool_share::{Metadata, PoolShare};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
 use soroban_sdk::{Address, Env};
@@ -68,11 +69,23 @@ fn setup_with(cfg: Config) -> Fixture {
         emergency: admin.clone(),
         treasury: treasury.clone(),
     };
+    // The token names its manager and the manager names its token. In production the
+    // factory breaks that circle with a salt; here the token is re-registered at the same
+    // address once the manager exists.
+    fn meta(env: &Env) -> Metadata {
+        Metadata {
+            name: soroban_sdk::String::from_str(env, "Piron Stable Yield"),
+            symbol: soroban_sdk::String::from_str(env, "pSY"),
+            decimals: 7u32,
+        }
+    }
+    let share_id = env.register(PoolShare, (Address::generate(&env), meta(&env)));
     let id = env.register(
         StableYieldManager,
-        (roles, escrow_id.clone(), asset.address(), cfg),
+        (roles, escrow_id.clone(), asset.address(), cfg, share_id.clone()),
     );
     escrow.bind_manager(&id);
+    env.register_at(&share_id, PoolShare, (id.clone(), meta(&env)));
 
     let client = StableYieldManagerClient::new(&env, &id);
 
@@ -378,6 +391,104 @@ fn an_instrument_that_does_not_exist_cannot_be_closed() {
     let f = setup();
     assert_eq!(
         f.client.try_close_instrument(&f.admin, &7),
+        Err(Ok(Error::InstrumentNotFound))
+    );
+}
+
+// ---------------------------------------------------------------- instrument lifecycle
+
+#[test]
+fn a_coupon_comes_in_and_the_instrument_clock_advances() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+    f.client.deploy_capital(&f.spv, &500_000);
+
+    let mut bearing = discounted(500_000, 500_000, START);
+    bearing.instrument_type = 1;
+    bearing.annual_coupon_rate = 800; // 8%
+    bearing.coupon_frequency = 4;
+    bearing.next_coupon_due_date = START + YEAR / 4;
+    let index = f.client.add_instrument(&f.admin, &bearing);
+
+    // A quarter in, the coupon is accrued into the instrument's value but not yet paid.
+    f.env.ledger().set_timestamp(START + YEAR / 4);
+    let before = f.client.total_nav();
+    assert_eq!(before, 1_010_000);
+
+    f.client.record_instrument_coupon(&f.spv, &index, &10_000);
+
+    // NAV is unchanged, and that is the point: the coupon moved from accrued receivable
+    // to cash. Nothing was created, so nothing should be repriced. What changed is where
+    // the value sits — and the instrument now accrues the *next* coupon from zero.
+    assert_eq!(f.escrow.balance(), 500_000 + 10_000);
+    assert_eq!(f.client.total_nav(), before);
+
+    // Half a period on, it has begun accruing again.
+    f.env.ledger().set_timestamp(START + YEAR / 4 + YEAR / 8);
+    assert_eq!(f.client.total_nav(), 1_015_000);
+}
+
+#[test]
+fn maturing_an_instrument_brings_the_proceeds_back_and_closes_it() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+    f.client.deploy_capital(&f.spv, &500_000);
+    let index = f
+        .client
+        .add_instrument(&f.admin, &discounted(500_000, 550_000, START));
+
+    f.env.ledger().set_timestamp(START + YEAR);
+    assert_eq!(f.client.total_nav(), 1_050_000);
+
+    f.client.mature_instrument(&f.spv, &index, &550_000);
+
+    // Held as cash now rather than as a holding; NAV is unchanged by the settlement.
+    assert_eq!(f.escrow.balance(), 1_050_000);
+    assert_eq!(f.client.total_nav(), 1_050_000);
+}
+
+#[test]
+fn a_short_return_at_maturity_shows_up_as_a_nav_fall() {
+    // The pool took a loss. Pretending otherwise would misprice every share.
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+    f.client.deploy_capital(&f.spv, &500_000);
+    let index = f
+        .client
+        .add_instrument(&f.admin, &discounted(500_000, 550_000, START));
+
+    f.env.ledger().set_timestamp(START + YEAR);
+    f.client.mature_instrument(&f.spv, &index, &400_000);
+
+    assert_eq!(f.client.total_nav(), 900_000);
+    assert!(f.client.nav_per_share() < ONE);
+}
+
+#[test]
+fn only_the_spv_settles_instruments() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+    let index = f
+        .client
+        .add_instrument(&f.admin, &discounted(100_000, 110_000, START));
+    assert_eq!(
+        f.client.try_mature_instrument(&f.alice, &index, &110_000),
+        Err(Ok(Error::Unauthorized))
+    );
+}
+
+#[test]
+fn an_instrument_settles_once() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+    f.client.deploy_capital(&f.spv, &500_000);
+    let index = f
+        .client
+        .add_instrument(&f.admin, &discounted(500_000, 550_000, START));
+    f.env.ledger().set_timestamp(START + YEAR);
+    f.client.mature_instrument(&f.spv, &index, &550_000);
+    assert_eq!(
+        f.client.try_mature_instrument(&f.spv, &index, &550_000),
         Err(Ok(Error::InstrumentNotFound))
     );
 }

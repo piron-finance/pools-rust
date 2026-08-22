@@ -48,24 +48,32 @@ ASSET="$(stellar contract id asset --asset native --network "$NETWORK")"
 
 echo "Uploading contract code..."
 ESCROW_WASM="$(upload pool_escrow)"
+SHARE_WASM="$(upload pool_share)"
 SINGLE_WASM="$(upload single_asset_manager)"
 LOCKED_WASM="$(upload locked_pool_manager)"
 STABLE_WASM="$(upload stable_yield_manager)"
 
-echo "1/4 access-manager"
+echo "1/6 access-manager"
 ACCESS="$(deploy access_manager --admin "$ADMIN" --spv "$SPV" --operator "$OPERATOR" \
   --emergency "$EMERGENCY" --multisig "$MULTISIG")"
 
-echo "2/4 pool-registry"
+echo "2/6 pool-registry"
 REGISTRY="$(deploy pool_registry --access "$ACCESS")"
 
-echo "3/4 fee-manager"
+echo "3/6 fee-manager"
 FEES="$(deploy fee_manager --access "$ACCESS" \
   --destinations "{\"treasury\":\"$TREASURY\",\"reserve\":\"$RESERVE\",\"ops\":\"$OPS\"}")"
 
-echo "4/4 pool-factory"
+echo "4/6 pool-factory"
 FACTORY="$(deploy pool_factory --access "$ACCESS" --registry "$REGISTRY" \
-  --escrow_wasm "$ESCROW_WASM")"
+  --escrow_wasm "$ESCROW_WASM" --share_wasm "$SHARE_WASM")"
+
+echo "5/6 upgrade-timelock"
+TIMELOCK="$(deploy upgrade_timelock --access "$ACCESS" --guardian "$EMERGENCY")"
+
+echo "6/6 yield-reserve"
+RESERVE_C="$(deploy yield_reserve --access "$ACCESS" --asset "$ASSET" --treasury "$TREASURY" \
+  --config "{\"min_floor\":\"0\",\"treasury_split_bps\":3000}")"
 
 echo "Wiring..."
 # The factory registers what it builds, so it needs the role to do so.
@@ -83,13 +91,24 @@ ROLES="{\"admin\":\"$ADMIN\",\"operator\":\"$OPERATOR\",\"spv\":\"$SPV\",\"emerg
 CONFIG="{\"instrument_type\":0,\"face_value\":\"0\",\"purchase_price\":\"1000000000\",\"target_raise\":\"1000000000\",\"epoch_end_time\":$((NOW+604800)),\"maturity_date\":$((NOW+7776000)),\"coupon_dates\":[],\"coupon_rates\":[],\"discount_rate\":500,\"minimum_funding_threshold\":8000,\"min_investment\":\"10000000\",\"withdrawal_fee_bps\":50}"
 
 # Deterministic: the addresses are knowable before the transaction that creates them.
+META='{"name":"Piron 90d Bill","symbol":"pBILL90","decimals":7}'
 PREDICTED="$(call "$FACTORY" predict --salt "$SALT")"
 POOL="$(call "$FACTORY" create_single_asset_pool --caller "$ADMIN" --salt "$SALT" \
-  --config "$CONFIG" --roles "$ROLES" --asset "$ASSET")"
+  --config "$CONFIG" --roles "$ROLES" --asset "$ASSET" --share_metadata "$META")"
 MANAGER="$(echo "$POOL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["manager"])')"
 ESCROW="$(echo "$POOL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["escrow"])')"
+SHARE="$(echo "$POOL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["share"])')"
 
 call "$FEES" set_collector --caller "$ADMIN" --collector "$MANAGER" --allowed true >/dev/null
+call "$RESERVE_C" set_source --caller "$ADMIN" --source "$MANAGER" --allowed true >/dev/null
+
+# Every contract names the timelock as its upgrader, so no bytecode in the system can be
+# replaced without passing the 72-hour delay and the guardian's brake.
+echo "Binding upgraders..."
+for c in "$ACCESS" "$REGISTRY" "$FEES" "$FACTORY" "$RESERVE_C" "$MANAGER"; do
+  call "$c" bind_upgrader --caller "$ADMIN" --upgrader "$TIMELOCK" >/dev/null
+done
+call "$TIMELOCK" bind_upgrader --caller "$ADMIN" --upgrader "$TIMELOCK" >/dev/null
 
 mkdir -p "$ROOT/deployments"
 cat > "$OUT" <<EOF
@@ -101,12 +120,16 @@ PIRON_ACCESS_MANAGER=$ACCESS
 PIRON_POOL_REGISTRY=$REGISTRY
 PIRON_FEE_MANAGER=$FEES
 PIRON_POOL_FACTORY=$FACTORY
+PIRON_UPGRADE_TIMELOCK=$TIMELOCK
+PIRON_YIELD_RESERVE=$RESERVE_C
 PIRON_ESCROW_WASM=$ESCROW_WASM
+PIRON_SHARE_WASM=$SHARE_WASM
 PIRON_SINGLE_ASSET_WASM=$SINGLE_WASM
 PIRON_LOCKED_WASM=$LOCKED_WASM
 PIRON_STABLE_YIELD_WASM=$STABLE_WASM
 PIRON_POOL_MANAGER=$MANAGER
 PIRON_POOL_ESCROW=$ESCROW
+PIRON_POOL_SHARE=$SHARE
 PIRON_ADMIN=$ADMIN
 PIRON_SPV=$SPV
 PIRON_OPERATOR=$OPERATOR

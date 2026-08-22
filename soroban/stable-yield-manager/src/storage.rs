@@ -18,7 +18,7 @@ pub enum DataKey {
     Config,
     /// The whole portfolio, in one entry.
     Instruments,
-    TotalShares,
+    Share,
     QueueHead,
     QueueTail,
     QueuePending,

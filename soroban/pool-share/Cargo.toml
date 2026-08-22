@@ -1,0 +1,16 @@
+[package]
+name = "pool-share"
+description = "SEP-41 share token for a Piron pool. Minted and burned only by its manager."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+piron-types = { path = "../piron-types" }
+soroban-sdk = "27.0.6"
+
+[dev-dependencies]
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }

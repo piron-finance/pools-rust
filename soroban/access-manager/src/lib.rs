@@ -37,6 +37,7 @@ pub enum Error {
     NotInitialized = 700,
     Unauthorized = 701,
     InvalidAccount = 708,
+    AlreadyBound = 715,
 }
 
 impl From<piron_core::Error> for Error {
@@ -460,6 +461,39 @@ fn state_from_u32(value: u32) -> ProposalState {
         1 => ProposalState::Executed,
         2 => ProposalState::Cancelled,
         _ => ProposalState::Pending,
+    }
+}
+
+
+// ---------------------------------------------------------------- upgrades
+//
+// Soroban contracts replace their own bytecode; there is no proxy. So each one names an
+// upgrader once — in production the timelock — and only that address can swap the code.
+// The 72-hour delay and the guardian's brake live there, in front of every upgrade in the
+// system.
+
+#[contractimpl]
+impl AccessManager {
+    /// Names the contract permitted to upgrade this one. Callable once.
+    ///
+    /// One-way on purpose: a contract whose upgrader could be repointed has no timelock,
+    /// only the appearance of one.
+    pub fn bind_upgrader(env: Env, caller: Address, upgrader: Address) -> Result<(), Error> {
+        Self::require_admin(&env, &caller)?;
+        piron_types::upgradeable::bind(&env, &upgrader).map_err(|_| Error::AlreadyBound)
+    }
+
+    /// Replaces this contract's code. Only the bound upgrader may call it.
+    pub fn upgrade(env: Env, wasm_hash: soroban_sdk::BytesN<32>) -> Result<(), Error> {
+        piron_types::upgradeable::perform(&env, wasm_hash).map_err(|e| match e {
+            piron_types::upgradeable::UpgradeError::NotBound => Error::NotInitialized,
+            piron_types::upgradeable::UpgradeError::AlreadyBound => Error::AlreadyBound,
+        })
+    }
+
+    /// Who may upgrade this contract, if anyone yet.
+    pub fn upgrader(env: Env) -> Option<Address> {
+        piron_types::upgradeable::upgrader(&env)
     }
 }
 

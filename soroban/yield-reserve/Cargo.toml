@@ -1,0 +1,18 @@
+[package]
+name = "yield-reserve"
+description = "Protocol-level yield reserve: loan facility, shortfall cover, treasury sweeps."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+piron-core = { path = "../../crates/piron-core" }
+piron-types = { path = "../piron-types" }
+soroban-sdk = "27.0.6"
+
+[dev-dependencies]
+soroban-sdk = { version = "27.0.6", features = ["testutils"] }
+access-manager = { path = "../access-manager" }

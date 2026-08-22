@@ -16,3 +16,4 @@ soroban-sdk = "27.0.6"
 [dev-dependencies]
 soroban-sdk = { version = "27.0.6", features = ["testutils"] }
 pool-escrow = { path = "../pool-escrow" }
+pool-share = { path = "../pool-share" }

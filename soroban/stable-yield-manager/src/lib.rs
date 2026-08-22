@@ -102,11 +102,21 @@ pub enum Error {
     ProtocolPaused = 614,
     UnknownRole = 615,
     UnknownFeeType = 616,
+    UpgradeDelayNotElapsed = 617,
+    UpgradeExpired = 618,
+    UpgradeAlreadyExecuted = 619,
+    UpgradeCancelled = 620,
+    UpgradesPaused = 621,
+    UpgradeNotFound = 622,
+    ReserveFloorBreached = 623,
+    RepaymentExceedsLoan = 624,
+    InsufficientReserve = 625,
     NotInitialized = 700,
     Unauthorized = 701,
     NotRequestOwner = 705,
     TooManyInstruments = 706,
     InstrumentNotFound = 707,
+    AlreadyBound = 715,
 }
 
 impl From<piron_core::Error> for Error {
@@ -190,6 +200,15 @@ impl From<piron_core::Error> for Error {
             piron_core::Error::ProtocolPaused => Error::ProtocolPaused,
             piron_core::Error::UnknownRole => Error::UnknownRole,
             piron_core::Error::UnknownFeeType => Error::UnknownFeeType,
+            piron_core::Error::UpgradeDelayNotElapsed => Error::UpgradeDelayNotElapsed,
+            piron_core::Error::UpgradeExpired => Error::UpgradeExpired,
+            piron_core::Error::UpgradeAlreadyExecuted => Error::UpgradeAlreadyExecuted,
+            piron_core::Error::UpgradeCancelled => Error::UpgradeCancelled,
+            piron_core::Error::UpgradesPaused => Error::UpgradesPaused,
+            piron_core::Error::UpgradeNotFound => Error::UpgradeNotFound,
+            piron_core::Error::ReserveFloorBreached => Error::ReserveFloorBreached,
+            piron_core::Error::RepaymentExceedsLoan => Error::RepaymentExceedsLoan,
+            piron_core::Error::InsufficientReserve => Error::InsufficientReserve,
         }
     }
 }
@@ -237,10 +256,35 @@ pub struct InstrumentAdded {
 }
 
 #[contractevent]
+pub struct CouponReceived {
+    pub index: u32,
+    pub amount: i128,
+    pub coupons_paid: u32,
+}
+
+#[contractevent]
+pub struct InstrumentMatured {
+    pub index: u32,
+    pub proceeds: i128,
+    pub face_value: i128,
+}
+
+#[contractevent]
 pub struct NavUpdated {
     pub total_nav: i128,
     pub nav_per_share: i128,
     pub total_shares: i128,
+}
+
+
+/// The pool's share token. Holdings live there, not in this contract's storage, so a
+/// position can be transferred, custodied or posted as collateral.
+#[contractclient(name = "ShareClient")]
+pub trait Share {
+    fn mint(env: Env, to: Address, amount: i128);
+    fn burn(env: Env, from: Address, amount: i128);
+    fn balance(env: Env, id: Address) -> i128;
+    fn total_supply(env: Env) -> i128;
 }
 
 #[contract]
@@ -248,15 +292,22 @@ pub struct StableYieldManager;
 
 #[contractimpl]
 impl StableYieldManager {
-    pub fn __constructor(env: Env, roles: Roles, escrow: Address, asset: Address, config: Config) {
+    pub fn __constructor(
+        env: Env,
+        roles: Roles,
+        escrow: Address,
+        asset: Address,
+        config: Config,
+        share: Address,
+    ) {
         env.storage().instance().set(&DataKey::Roles, &roles);
         env.storage().instance().set(&DataKey::Escrow, &escrow);
         env.storage().instance().set(&DataKey::Asset, &asset);
         env.storage().instance().set(&DataKey::Config, &config);
+        env.storage().instance().set(&DataKey::Share, &share);
         env.storage()
             .instance()
             .set(&DataKey::Instruments, &Vec::<StoredInstrument>::new(&env));
-        env.storage().instance().set(&DataKey::TotalShares, &0i128);
         env.storage().instance().set(&DataKey::QueueHead, &0u64);
         env.storage().instance().set(&DataKey::QueueTail, &0u64);
         env.storage().instance().set(&DataKey::QueuePending, &0i128);
@@ -302,17 +353,7 @@ impl StableYieldManager {
 
         Self::escrow(&env)?.take(&investor, &assets);
 
-        write_shares(
-            &env,
-            &investor,
-            read_shares(&env, &investor)
-                .checked_add(shares)
-                .ok_or(Error::Overflow)?,
-        );
-        let total = Self::total_shares(&env)
-            .checked_add(shares)
-            .ok_or(Error::Overflow)?;
-        env.storage().instance().set(&DataKey::TotalShares, &total);
+        Self::share(&env)?.mint(&investor, &shares);
 
         // First deposit starts the holding-period clock; later ones do not restart it.
         let key = DataKey::DepositTime(investor.clone());
@@ -340,7 +381,7 @@ impl StableYieldManager {
         bump_instance(&env);
 
         let config = Self::config(&env)?;
-        let held = read_shares(&env, &owner);
+        let held = Self::held_by(&env, &owner);
         validate::validate_withdrawal_request(shares, held)?;
 
         let deposit_time: u64 = env
@@ -469,17 +510,7 @@ impl StableYieldManager {
                 let quote =
                     queue::quote_withdrawal(stored.shares, price, config.withdrawal_fee_bps)?;
 
-                write_shares(
-                    &env,
-                    &stored.owner,
-                    read_shares(&env, &stored.owner)
-                        .checked_sub(stored.shares)
-                        .ok_or(Error::InsufficientShares)?,
-                );
-                let total = Self::total_shares(&env)
-                    .checked_sub(stored.shares)
-                    .ok_or(Error::Overflow)?;
-                env.storage().instance().set(&DataKey::TotalShares, &total);
+                Self::share(&env)?.burn(&stored.owner, &stored.shares);
 
                 escrow.release(&stored.owner, &quote.net_value);
                 if quote.fee > 0 {
@@ -558,6 +589,86 @@ impl StableYieldManager {
         Ok(index)
     }
 
+    /// Records a coupon paid on a holding.
+    ///
+    /// The cash comes into the escrow and the instrument's clock advances, so NAV stops
+    /// accruing the coupon it has now actually received and starts accruing the next one.
+    pub fn record_instrument_coupon(
+        env: Env,
+        caller: Address,
+        index: u32,
+        amount: i128,
+    ) -> Result<(), Error> {
+        Self::require_spv(&env, &caller)?;
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let mut instruments = Self::instruments(&env);
+        let mut instrument = instruments.get(index).ok_or(Error::InstrumentNotFound)?;
+        if !instrument.is_active {
+            return Err(Error::InstrumentNotFound);
+        }
+        if instrument.coupon_frequency == 0 {
+            return Err(Error::InvalidCouponFrequency);
+        }
+
+        Self::escrow(&env)?.take(&caller, &amount);
+
+        let period = nav::SECONDS_PER_YEAR / instrument.coupon_frequency as u64;
+        instrument.coupons_paid += 1;
+        instrument.next_coupon_due_date = instrument.next_coupon_due_date.saturating_add(period);
+        instruments.set(index, instrument.clone());
+        env.storage()
+            .instance()
+            .set(&DataKey::Instruments, &instruments);
+
+        CouponReceived {
+            index,
+            amount,
+            coupons_paid: instrument.coupons_paid,
+        }
+        .publish(&env);
+        Self::emit_nav(&env)
+    }
+
+    /// Settles a holding at maturity: the proceeds come back and the instrument closes.
+    ///
+    /// A return short of face value is accepted and shows up as a NAV fall — the pool
+    /// took a loss, and pretending otherwise would misprice every share.
+    pub fn mature_instrument(
+        env: Env,
+        caller: Address,
+        index: u32,
+        proceeds: i128,
+    ) -> Result<(), Error> {
+        Self::require_spv(&env, &caller)?;
+        if proceeds <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let mut instruments = Self::instruments(&env);
+        let mut instrument = instruments.get(index).ok_or(Error::InstrumentNotFound)?;
+        if !instrument.is_active {
+            return Err(Error::InstrumentNotFound);
+        }
+
+        Self::escrow(&env)?.take(&caller, &proceeds);
+        instrument.is_active = false;
+        instruments.set(index, instrument.clone());
+        env.storage()
+            .instance()
+            .set(&DataKey::Instruments, &instruments);
+
+        InstrumentMatured {
+            index,
+            proceeds,
+            face_value: instrument.face_value,
+        }
+        .publish(&env);
+        Self::emit_nav(&env)
+    }
+
     /// Closes out an instrument that has matured or been sold.
     pub fn close_instrument(env: Env, caller: Address, index: u32) -> Result<(), Error> {
         Self::require_operator(&env, &caller)?;
@@ -617,7 +728,14 @@ impl StableYieldManager {
     // ------------------------------------------------------------ views
 
     pub fn shares_of(env: Env, who: Address) -> i128 {
-        read_shares(&env, &who)
+        Self::held_by(&env, &who)
+    }
+
+    pub fn share_token(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Share)
+            .ok_or(Error::NotInitialized)
     }
 
     pub fn total_supply(env: Env) -> i128 {
@@ -627,7 +745,7 @@ impl StableYieldManager {
     /// What a holder's stake is worth at today's price.
     pub fn holding_value(env: Env, who: Address) -> Result<i128, Error> {
         let price = Self::nav_per_share(env.clone())?;
-        Ok(nav::assets_for_shares(read_shares(&env, &who), price)?)
+        Ok(nav::assets_for_shares(Self::held_by(&env, &who), price)?)
     }
 
     // ------------------------------------------------------------ internals
@@ -684,11 +802,21 @@ impl StableYieldManager {
         Self::deployed_outstanding(&env)
     }
 
-    fn total_shares(env: &Env) -> i128 {
-        env.storage()
+    fn share(env: &Env) -> Result<ShareClient<'_>, Error> {
+        let address: Address = env
+            .storage()
             .instance()
-            .get(&DataKey::TotalShares)
-            .unwrap_or(0)
+            .get(&DataKey::Share)
+            .ok_or(Error::NotInitialized)?;
+        Ok(ShareClient::new(env, &address))
+    }
+
+    fn total_shares(env: &Env) -> i128 {
+        Self::share(env).map(|s| s.total_supply()).unwrap_or(0)
+    }
+
+    fn held_by(env: &Env, who: &Address) -> i128 {
+        Self::share(env).map(|s| s.balance(who)).unwrap_or(0)
     }
 
     fn config(env: &Env) -> Result<Config, Error> {
@@ -724,6 +852,15 @@ impl StableYieldManager {
         Ok(())
     }
 
+    fn require_admin(env: &Env, caller: &Address) -> Result<(), Error> {
+        caller.require_auth();
+        bump_instance(env);
+        if *caller != Self::roles(env)?.admin {
+            return Err(Error::Unauthorized);
+        }
+        Ok(())
+    }
+
     fn require_spv(env: &Env, caller: &Address) -> Result<(), Error> {
         caller.require_auth();
         bump_instance(env);
@@ -731,6 +868,39 @@ impl StableYieldManager {
             return Err(Error::Unauthorized);
         }
         Ok(())
+    }
+}
+
+
+// ---------------------------------------------------------------- upgrades
+//
+// Soroban contracts replace their own bytecode; there is no proxy. So each one names an
+// upgrader once — in production the timelock — and only that address can swap the code.
+// The 72-hour delay and the guardian's brake live there, in front of every upgrade in the
+// system.
+
+#[contractimpl]
+impl StableYieldManager {
+    /// Names the contract permitted to upgrade this one. Callable once.
+    ///
+    /// One-way on purpose: a contract whose upgrader could be repointed has no timelock,
+    /// only the appearance of one.
+    pub fn bind_upgrader(env: Env, caller: Address, upgrader: Address) -> Result<(), Error> {
+        Self::require_admin(&env, &caller)?;
+        piron_types::upgradeable::bind(&env, &upgrader).map_err(|_| Error::AlreadyBound)
+    }
+
+    /// Replaces this contract's code. Only the bound upgrader may call it.
+    pub fn upgrade(env: Env, wasm_hash: soroban_sdk::BytesN<32>) -> Result<(), Error> {
+        piron_types::upgradeable::perform(&env, wasm_hash).map_err(|e| match e {
+            piron_types::upgradeable::UpgradeError::NotBound => Error::NotInitialized,
+            piron_types::upgradeable::UpgradeError::AlreadyBound => Error::AlreadyBound,
+        })
+    }
+
+    /// Who may upgrade this contract, if anyone yet.
+    pub fn upgrader(env: Env) -> Option<Address> {
+        piron_types::upgradeable::upgrader(&env)
     }
 }
 

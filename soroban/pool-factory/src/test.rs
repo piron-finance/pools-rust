@@ -15,6 +15,9 @@ use soroban_sdk::{Address, BytesN, Env, Vec};
 
 use super::*;
 
+mod share_wasm {
+    soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/pool_share.wasm");
+}
 mod escrow_wasm {
     soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/pool_escrow.wasm");
 }
@@ -87,9 +90,10 @@ fn setup() -> Fixture {
     StellarAssetClient::new(&env, &asset).mint(&investor, &10_000_000);
 
     let escrow_hash = env.deployer().upload_contract_wasm(escrow_wasm::WASM);
+    let share_hash = env.deployer().upload_contract_wasm(share_wasm::WASM);
     let factory_id = env.register(
         PoolFactory,
-        (access_id, registry_id, escrow_hash),
+        (access_id, registry_id, escrow_hash, share_hash),
     );
     let factory = PoolFactoryClient::new(&env, &factory_id);
 
@@ -155,6 +159,14 @@ fn single_asset_config(env: &Env, asset_target: i128) -> StoredConfig {
     }
 }
 
+fn metadata(env: &Env) -> ShareMetadata {
+    ShareMetadata {
+        name: soroban_sdk::String::from_str(env, "Piron Pool Share"),
+        symbol: soroban_sdk::String::from_str(env, "pSHARE"),
+        decimals: 7u32,
+    }
+}
+
 fn salt(env: &Env, byte: u8) -> BytesN<32> {
     let mut raw = [0u8; 32];
     raw[31] = byte;
@@ -178,6 +190,7 @@ fn an_address_can_be_known_before_the_pool_exists() {
         &single_asset_config(&f.env, 1_000_000),
         &pool_roles(&f),
         &f.asset,
+        &metadata(&f.env),
     );
 
     assert_eq!(created.manager, predicted.manager);
@@ -210,6 +223,7 @@ fn a_salt_is_spent_once() {
         &single_asset_config(&f.env, 1_000_000),
         &pool_roles(&f),
         &f.asset,
+        &metadata(&f.env),
     );
     assert!(f.factory.is_salt_used(&s));
 
@@ -220,6 +234,7 @@ fn a_salt_is_spent_once() {
             &single_asset_config(&f.env, 1_000_000),
             &pool_roles(&f),
             &f.asset,
+            &metadata(&f.env),
         ),
         Err(Ok(Error::SaltAlreadyUsed))
     );
@@ -236,6 +251,7 @@ fn a_created_pool_is_wired_and_registered_in_one_call() {
         &single_asset_config(&f.env, 1_000_000),
         &pool_roles(&f),
         &f.asset,
+        &metadata(&f.env),
     );
 
     // The escrow obeys the manager and nobody else — no window where it sits unbound.
@@ -261,6 +277,7 @@ fn a_pool_from_the_factory_actually_works() {
         &single_asset_config(&f.env, 1_000_000),
         &pool_roles(&f),
         &f.asset,
+        &metadata(&f.env),
     );
 
     let manager = SingleAssetManagerClient::new(&f.env, &created.manager);
@@ -281,6 +298,7 @@ fn the_factory_builds_all_three_pool_types() {
         &single_asset_config(&f.env, 1_000_000),
         &pool_roles(&f),
         &f.asset,
+        &metadata(&f.env),
     );
     let locked = f.factory.create_locked_pool(
         &f.admin,
@@ -302,6 +320,7 @@ fn the_factory_builds_all_three_pool_types() {
             reserve_ratio_bps: 2_000,
             is_active: true,
         },
+        &metadata(&f.env),
     );
 
     assert_eq!(f.factory.pool_count(), 3);
@@ -331,6 +350,7 @@ fn an_outsider_cannot_create_a_pool() {
             &single_asset_config(&f.env, 1_000_000),
             &pool_roles(&f),
             &f.asset,
+            &metadata(&f.env),
         ),
         Err(Ok(Error::Unauthorized))
     );
@@ -363,7 +383,8 @@ fn a_pool_kind_with_no_code_registered_cannot_be_built() {
     );
     let registry_id = env.register(PoolRegistry, (access_id.clone(),));
     let escrow_hash = env.deployer().upload_contract_wasm(escrow_wasm::WASM);
-    let factory_id = env.register(PoolFactory, (access_id, registry_id, escrow_hash));
+    let share_hash = env.deployer().upload_contract_wasm(share_wasm::WASM);
+    let factory_id = env.register(PoolFactory, (access_id, registry_id, escrow_hash, share_hash));
     let factory = PoolFactoryClient::new(&env, &factory_id);
 
     assert_eq!(
@@ -385,6 +406,7 @@ fn a_pool_cannot_be_created_on_an_unapproved_asset() {
             &single_asset_config(&f.env, 1_000_000),
             &pool_roles(&f),
             &f.asset,
+            &metadata(&f.env),
         )
         .is_err());
     // Nothing was left half-built.

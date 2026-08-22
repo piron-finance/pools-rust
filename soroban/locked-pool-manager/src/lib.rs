@@ -101,10 +101,20 @@ pub enum Error {
     ProtocolPaused = 614,
     UnknownRole = 615,
     UnknownFeeType = 616,
+    UpgradeDelayNotElapsed = 617,
+    UpgradeExpired = 618,
+    UpgradeAlreadyExecuted = 619,
+    UpgradeCancelled = 620,
+    UpgradesPaused = 621,
+    UpgradeNotFound = 622,
+    ReserveFloorBreached = 623,
+    RepaymentExceedsLoan = 624,
+    InsufficientReserve = 625,
     NotInitialized = 700,
     Unauthorized = 701,
     NotPositionOwner = 703,
     PoolClosed = 704,
+    AlreadyBound = 715,
 }
 
 impl From<piron_core::Error> for Error {
@@ -188,6 +198,15 @@ impl From<piron_core::Error> for Error {
             piron_core::Error::ProtocolPaused => Error::ProtocolPaused,
             piron_core::Error::UnknownRole => Error::UnknownRole,
             piron_core::Error::UnknownFeeType => Error::UnknownFeeType,
+            piron_core::Error::UpgradeDelayNotElapsed => Error::UpgradeDelayNotElapsed,
+            piron_core::Error::UpgradeExpired => Error::UpgradeExpired,
+            piron_core::Error::UpgradeAlreadyExecuted => Error::UpgradeAlreadyExecuted,
+            piron_core::Error::UpgradeCancelled => Error::UpgradeCancelled,
+            piron_core::Error::UpgradesPaused => Error::UpgradesPaused,
+            piron_core::Error::UpgradeNotFound => Error::UpgradeNotFound,
+            piron_core::Error::ReserveFloorBreached => Error::ReserveFloorBreached,
+            piron_core::Error::RepaymentExceedsLoan => Error::RepaymentExceedsLoan,
+            piron_core::Error::InsufficientReserve => Error::InsufficientReserve,
         }
     }
 }
@@ -196,6 +215,7 @@ impl From<piron_core::Error> for Error {
 pub trait Escrow {
     fn take(env: Env, from: Address, amount: i128);
     fn release(env: Env, to: Address, amount: i128);
+    fn balance(env: Env) -> i128;
 }
 
 // ---------------------------------------------------------------- events
@@ -215,6 +235,16 @@ pub struct PositionOpened {
     pub principal: i128,
     pub interest: i128,
     pub lock_end: u64,
+}
+
+#[contractevent]
+pub struct CapitalDeployed {
+    pub amount: i128,
+}
+
+#[contractevent]
+pub struct CapitalReturned {
+    pub amount: i128,
 }
 
 #[contractevent]
@@ -527,6 +557,65 @@ impl LockedPoolManager {
         Ok(new_id)
     }
 
+    // ------------------------------------------------------------ spv
+
+    /// Sends idle capital to the SPV.
+    ///
+    /// Locked pools owe fixed amounts on fixed dates, so the manager keeps back what the
+    /// nearest maturities need: `deployable` is the escrow balance less committed payouts.
+    pub fn deploy_to_spv(env: Env, caller: Address, amount: i128) -> Result<(), Error> {
+        Self::require_spv(&env, &caller)?;
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        if amount > Self::deployable(env.clone()) {
+            return Err(Error::InsufficientLiquidity);
+        }
+
+        Self::escrow(&env)?.release(&caller, &amount);
+        let mut metrics = Self::metrics(&env);
+        metrics.total_invested = storage::saturating_add(metrics.total_invested, amount);
+        env.storage().instance().set(&DataKey::Metrics, &metrics);
+
+        CapitalDeployed { amount }.publish(&env);
+        Ok(())
+    }
+
+    /// Returns capital or yield from the SPV.
+    pub fn return_from_spv(env: Env, caller: Address, amount: i128) -> Result<(), Error> {
+        Self::require_spv(&env, &caller)?;
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        Self::escrow(&env)?.take(&caller, &amount);
+        let mut metrics = Self::metrics(&env);
+        // Returns retire deployed capital first; anything beyond it is yield.
+        metrics.total_invested = (metrics.total_invested - amount).max(0);
+        env.storage().instance().set(&DataKey::Metrics, &metrics);
+
+        CapitalReturned { amount }.publish(&env);
+        Ok(())
+    }
+
+    /// Cash the pool can send out without stranding the payouts it has already promised.
+    ///
+    /// Unlike a stable-yield reserve ratio, this is not a policy choice — the amounts and
+    /// the dates are already fixed by the positions that exist.
+    pub fn deployable(env: Env) -> i128 {
+        let held = Self::escrow(&env).map(|e| e.balance()).unwrap_or(0);
+        let metrics = Self::metrics(&env);
+        // Principal plus the interest still owed at maturity is what must stay covered.
+        //
+        // Capital already with the SPV is deliberately *not* netted off: it is still owed
+        // to holders, and the escrow balance already reflects that it left. Subtracting it
+        // here would count the same departure twice and let the pool lend out its cover.
+        let committed = metrics
+            .total_principal_locked
+            .saturating_add(metrics.interest_pending_maturity);
+        (held - committed).max(0)
+    }
+
     // ------------------------------------------------------------ views
 
     pub fn position(env: Env, position_id: u64) -> Result<StoredPosition, Error> {
@@ -632,6 +721,15 @@ impl LockedPoolManager {
             .ok_or(Error::NotInitialized)
     }
 
+    fn require_spv(env: &Env, caller: &Address) -> Result<(), Error> {
+        caller.require_auth();
+        bump_instance(env);
+        if *caller != Self::roles(env)?.spv {
+            return Err(Error::Unauthorized);
+        }
+        Ok(())
+    }
+
     fn require_admin(env: &Env, caller: &Address) -> Result<(), Error> {
         caller.require_auth();
         bump_instance(env);
@@ -651,6 +749,39 @@ impl LockedPoolManager {
             return Err(Error::PoolClosed);
         }
         Ok(())
+    }
+}
+
+
+// ---------------------------------------------------------------- upgrades
+//
+// Soroban contracts replace their own bytecode; there is no proxy. So each one names an
+// upgrader once — in production the timelock — and only that address can swap the code.
+// The 72-hour delay and the guardian's brake live there, in front of every upgrade in the
+// system.
+
+#[contractimpl]
+impl LockedPoolManager {
+    /// Names the contract permitted to upgrade this one. Callable once.
+    ///
+    /// One-way on purpose: a contract whose upgrader could be repointed has no timelock,
+    /// only the appearance of one.
+    pub fn bind_upgrader(env: Env, caller: Address, upgrader: Address) -> Result<(), Error> {
+        Self::require_admin(&env, &caller)?;
+        piron_types::upgradeable::bind(&env, &upgrader).map_err(|_| Error::AlreadyBound)
+    }
+
+    /// Replaces this contract's code. Only the bound upgrader may call it.
+    pub fn upgrade(env: Env, wasm_hash: soroban_sdk::BytesN<32>) -> Result<(), Error> {
+        piron_types::upgradeable::perform(&env, wasm_hash).map_err(|e| match e {
+            piron_types::upgradeable::UpgradeError::NotBound => Error::NotInitialized,
+            piron_types::upgradeable::UpgradeError::AlreadyBound => Error::AlreadyBound,
+        })
+    }
+
+    /// Who may upgrade this contract, if anyone yet.
+    pub fn upgrader(env: Env) -> Option<Address> {
+        piron_types::upgradeable::upgrader(&env)
     }
 }
 

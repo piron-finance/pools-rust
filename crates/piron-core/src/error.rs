@@ -106,6 +106,15 @@ pub enum Error {
     ProtocolPaused = 614,
     UnknownRole = 615,
     UnknownFeeType = 616,
+    UpgradeDelayNotElapsed = 617,
+    UpgradeExpired = 618,
+    UpgradeAlreadyExecuted = 619,
+    UpgradeCancelled = 620,
+    UpgradesPaused = 621,
+    UpgradeNotFound = 622,
+    ReserveFloorBreached = 623,
+    RepaymentExceedsLoan = 624,
+    InsufficientReserve = 625,
 }
 
 impl Error {

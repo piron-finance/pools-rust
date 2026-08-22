@@ -11,6 +11,9 @@ members = [
     "soroban/pool-registry",
     "soroban/fee-manager",
     "soroban/pool-factory",
+    "soroban/upgrade-timelock",
+    "soroban/yield-reserve",
+    "soroban/pool-share",
 ]
 
 # Solana is excluded: it builds through `cargo-build-sbf`, which manages its own

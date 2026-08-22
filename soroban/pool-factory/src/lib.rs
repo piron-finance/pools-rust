@@ -23,6 +23,7 @@ use piron_core::governance::roles::Role;
 // spec entry is emitted under the type's real name. An alias makes the two disagree and
 // the contract fails to deploy with "Missing Entry".
 use piron_types::{Config, PoolType, Roles, StoredConfig};
+use soroban_sdk::String;
 
 const LEDGERS_PER_DAY: u32 = 17_280;
 const BUMP: u32 = LEDGERS_PER_DAY * 60;
@@ -32,6 +33,7 @@ const THRESHOLD: u32 = LEDGERS_PER_DAY * 45;
 /// addresses.
 const TAG_ESCROW: u8 = 1;
 const TAG_MANAGER: u8 = 2;
+const TAG_SHARE: u8 = 3;
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -41,6 +43,7 @@ pub enum Error {
     Unauthorized = 701,
     WasmNotSet = 711,
     SaltAlreadyUsed = 712,
+    AlreadyBound = 715,
 }
 
 /// A pool and the escrow that holds its money.
@@ -49,6 +52,18 @@ pub enum Error {
 pub struct PoolAddresses {
     pub manager: Address,
     pub escrow: Address,
+    /// The pool's SEP-41 share token. Absent for locked pools, whose positions are not
+    /// fungible — each has its own maturity, so there is nothing to make interchangeable.
+    pub share: Option<Address>,
+}
+
+/// What to call a pool's share token.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShareMetadata {
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u32,
 }
 
 #[contracttype]
@@ -57,6 +72,7 @@ pub enum DataKey {
     Access,
     Registry,
     EscrowWasm,
+    ShareWasm,
     ManagerWasm(PoolType),
     /// Salts already spent, so a repeat call fails loudly rather than at the host level.
     Used(BytesN<32>),
@@ -105,12 +121,19 @@ pub struct PoolFactory;
 
 #[contractimpl]
 impl PoolFactory {
-    pub fn __constructor(env: Env, access: Address, registry: Address, escrow_wasm: BytesN<32>) {
+    pub fn __constructor(
+        env: Env,
+        access: Address,
+        registry: Address,
+        escrow_wasm: BytesN<32>,
+        share_wasm: BytesN<32>,
+    ) {
         env.storage().instance().set(&DataKey::Access, &access);
         env.storage().instance().set(&DataKey::Registry, &registry);
         env.storage()
             .instance()
             .set(&DataKey::EscrowWasm, &escrow_wasm);
+        env.storage().instance().set(&DataKey::ShareWasm, &share_wasm);
         env.storage().instance().set(&DataKey::PoolCount, &0u32);
         env.storage().instance().extend_ttl(THRESHOLD, BUMP);
     }
@@ -143,17 +166,30 @@ impl PoolFactory {
         config: StoredConfig,
         roles: Roles,
         asset: Address,
+        share_metadata: ShareMetadata,
     ) -> Result<PoolAddresses, Error> {
         Self::require_creator(&env, &caller)?;
         let escrow = Self::deploy_escrow(&env, &salt, &asset)?;
+        // The share token must name its manager, and the manager must name its share
+        // token. The salt breaks the circle: the manager's address is derivable before it
+        // exists, so the token can be built pointing at it.
+        let share = Self::deploy_share(&env, &salt, &share_metadata)?;
         let manager = env
             .deployer()
             .with_current_contract(Self::salt_for(&env, &salt, TAG_MANAGER))
             .deploy_v2(
                 Self::manager_wasm(&env, PoolType::SingleAsset)?,
-                (config, roles, escrow.clone()),
+                (config, roles, escrow.clone(), share.clone()),
             );
-        Self::finish(&env, &salt, PoolType::SingleAsset, manager, escrow, asset)
+        Self::finish(
+            &env,
+            &salt,
+            PoolType::SingleAsset,
+            manager,
+            escrow,
+            Some(share),
+            asset,
+        )
     }
 
     /// Deploys a Locked pool.
@@ -174,7 +210,7 @@ impl PoolFactory {
                 Self::manager_wasm(&env, PoolType::Locked)?,
                 (roles, escrow.clone(), asset.clone(), min_investment),
             );
-        Self::finish(&env, &salt, PoolType::Locked, manager, escrow, asset)
+        Self::finish(&env, &salt, PoolType::Locked, manager, escrow, None, asset)
     }
 
     /// Deploys a Stable Yield pool.
@@ -185,17 +221,27 @@ impl PoolFactory {
         roles: Roles,
         asset: Address,
         config: Config,
+        share_metadata: ShareMetadata,
     ) -> Result<PoolAddresses, Error> {
         Self::require_creator(&env, &caller)?;
         let escrow = Self::deploy_escrow(&env, &salt, &asset)?;
+        let share = Self::deploy_share(&env, &salt, &share_metadata)?;
         let manager = env
             .deployer()
             .with_current_contract(Self::salt_for(&env, &salt, TAG_MANAGER))
             .deploy_v2(
                 Self::manager_wasm(&env, PoolType::StableYield)?,
-                (roles, escrow.clone(), asset.clone(), config),
+                (roles, escrow.clone(), asset.clone(), config, share.clone()),
             );
-        Self::finish(&env, &salt, PoolType::StableYield, manager, escrow, asset)
+        Self::finish(
+            &env,
+            &salt,
+            PoolType::StableYield,
+            manager,
+            escrow,
+            Some(share),
+            asset,
+        )
     }
 
     // ------------------------------------------------------------ queries
@@ -214,6 +260,11 @@ impl PoolFactory {
                 .deployer()
                 .with_current_contract(Self::salt_for(&env, &salt, TAG_ESCROW))
                 .deployed_address(),
+            share: Some(
+                env.deployer()
+                    .with_current_contract(Self::salt_for(&env, &salt, TAG_SHARE))
+                    .deployed_address(),
+            ),
         }
     }
 
@@ -249,6 +300,28 @@ impl PoolFactory {
             .deploy_v2(wasm, (env.current_contract_address(), asset.clone())))
     }
 
+    fn deploy_share(
+        env: &Env,
+        salt: &BytesN<32>,
+        metadata: &ShareMetadata,
+    ) -> Result<Address, Error> {
+        let wasm: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&DataKey::ShareWasm)
+            .ok_or(Error::WasmNotSet)?;
+        // The manager's address is known before the manager is deployed, so the token can
+        // be built already pointing at the only contract allowed to mint it.
+        let manager = env
+            .deployer()
+            .with_current_contract(Self::salt_for(env, salt, TAG_MANAGER))
+            .deployed_address();
+        Ok(env
+            .deployer()
+            .with_current_contract(Self::salt_for(env, salt, TAG_SHARE))
+            .deploy_v2(wasm, (manager, metadata.clone())))
+    }
+
     /// Binds the pair, registers the pool, and marks the salt spent.
     fn finish(
         env: &Env,
@@ -256,6 +329,7 @@ impl PoolFactory {
         kind: PoolType,
         manager: Address,
         escrow: Address,
+        share: Option<Address>,
         asset: Address,
     ) -> Result<PoolAddresses, Error> {
         EscrowClient::new(env, &escrow).bind_manager(&manager);
@@ -294,7 +368,11 @@ impl PoolFactory {
         }
         .publish(env);
 
-        Ok(PoolAddresses { manager, escrow })
+        Ok(PoolAddresses {
+            manager,
+            escrow,
+            share,
+        })
     }
 
     /// One salt, two addresses: tagged so escrow and manager never collide.
@@ -352,6 +430,39 @@ fn kind_u32(kind: PoolType) -> u32 {
         PoolType::SingleAsset => 0,
         PoolType::Locked => 1,
         PoolType::StableYield => 2,
+    }
+}
+
+
+// ---------------------------------------------------------------- upgrades
+//
+// Soroban contracts replace their own bytecode; there is no proxy. So each one names an
+// upgrader once — in production the timelock — and only that address can swap the code.
+// The 72-hour delay and the guardian's brake live there, in front of every upgrade in the
+// system.
+
+#[contractimpl]
+impl PoolFactory {
+    /// Names the contract permitted to upgrade this one. Callable once.
+    ///
+    /// One-way on purpose: a contract whose upgrader could be repointed has no timelock,
+    /// only the appearance of one.
+    pub fn bind_upgrader(env: Env, caller: Address, upgrader: Address) -> Result<(), Error> {
+        Self::require(&env, &caller, Role::DefaultAdmin)?;
+        piron_types::upgradeable::bind(&env, &upgrader).map_err(|_| Error::AlreadyBound)
+    }
+
+    /// Replaces this contract's code. Only the bound upgrader may call it.
+    pub fn upgrade(env: Env, wasm_hash: soroban_sdk::BytesN<32>) -> Result<(), Error> {
+        piron_types::upgradeable::perform(&env, wasm_hash).map_err(|e| match e {
+            piron_types::upgradeable::UpgradeError::NotBound => Error::NotInitialized,
+            piron_types::upgradeable::UpgradeError::AlreadyBound => Error::AlreadyBound,
+        })
+    }
+
+    /// Who may upgrade this contract, if anyone yet.
+    pub fn upgrader(env: Env) -> Option<Address> {
+        piron_types::upgradeable::upgrader(&env)
     }
 }
 
