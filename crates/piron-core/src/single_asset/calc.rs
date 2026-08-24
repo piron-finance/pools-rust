@@ -62,9 +62,6 @@ pub fn face_value_from(actual_raised: Amount, discount_rate: u32) -> Result<Amou
 
 /// Everything the pool pays out at maturity.
 pub fn total_returns(data: &PoolData) -> Result<Amount, Error> {
-    if data.is_discounted() {
-        return Ok(data.config.face_value);
-    }
     let undistributed = math::checked_sub(
         data.total_coupons_received,
         data.total_coupons_distributed,

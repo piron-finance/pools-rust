@@ -196,7 +196,7 @@ fn invested_discounted() -> PoolData {
 #[test]
 fn a_return_matching_expectation_is_on_target() {
     let data = invested_discounted();
-    let outcome = lifecycle::process_maturity(&data, 1_100_000, MATURITY).unwrap();
+    let outcome = lifecycle::process_maturity(&data, 1_100_000, MATURITY, 1_000_000).unwrap();
     assert_eq!(outcome.new_status, PoolStatus::Matured);
     assert_eq!(outcome.funds_returned, 1_100_000);
     assert_eq!(outcome.variance, lifecycle::MaturityVariance::OnTarget);
@@ -205,7 +205,7 @@ fn a_return_matching_expectation_is_on_target() {
 #[test]
 fn a_short_return_reports_the_gap() {
     let data = invested_discounted();
-    let outcome = lifecycle::process_maturity(&data, 1_000_000, MATURITY).unwrap();
+    let outcome = lifecycle::process_maturity(&data, 1_000_000, MATURITY, 1_000_000).unwrap();
     assert_eq!(
         outcome.variance,
         lifecycle::MaturityVariance::Shortfall(100_000)
@@ -217,13 +217,13 @@ fn a_return_over_a_hundred_and_twenty_percent_is_flagged() {
     let data = invested_discounted();
     // 120% of 1,100,000 is 1,320,000 — the boundary itself is not an overage.
     assert_eq!(
-        lifecycle::process_maturity(&data, 1_320_000, MATURITY)
+        lifecycle::process_maturity(&data, 1_320_000, MATURITY, 1_000_000)
             .unwrap()
             .variance,
         lifecycle::MaturityVariance::OnTarget
     );
     assert_eq!(
-        lifecycle::process_maturity(&data, 1_320_001, MATURITY)
+        lifecycle::process_maturity(&data, 1_320_001, MATURITY, 1_000_000)
             .unwrap()
             .variance,
         lifecycle::MaturityVariance::Overage
@@ -234,7 +234,7 @@ fn a_return_over_a_hundred_and_twenty_percent_is_flagged() {
 fn maturity_cannot_be_settled_early() {
     let data = invested_discounted();
     assert_eq!(
-        lifecycle::process_maturity(&data, 1_100_000, MATURITY - 1),
+        lifecycle::process_maturity(&data, 1_100_000, MATURITY - 1, 1_000_000),
         Err(Error::MaturityNotReached)
     );
 }
@@ -385,6 +385,9 @@ fn redeeming_a_matured_pool_pays_pro_rata_less_the_fee() {
     let mut data = invested_discounted();
     data.status = PoolStatus::Matured;
     data.config.withdrawal_fee_bps = 50; // 0.5%
+    // The SPV settled at face; the pot is what it returned, and the divisor was frozen then.
+    data.funds_returned_by_spv = 1_100_000;
+    data.shares_at_maturity = 1_000_000;
 
     let outcome = flow::withdraw(
         &data,
@@ -465,29 +468,60 @@ fn an_emergency_refund_cannot_exceed_the_position() {
     );
 }
 
-// ---------------------------------------------------------------- the divergence
+// ---------------------------------------------------------------- settlement
 
 #[test]
-fn the_two_total_returns_agree_for_discounted_pools() {
+fn settlement_pays_what_the_spv_returned_not_the_projection() {
+    // One formula, both instrument kinds: what actually came back, plus coupons received
+    // and not yet distributed. Face value and scheduled coupons are targets, and paying
+    // them out when the instrument underperformed overpays whoever exits first.
     let mut data = invested_discounted();
     data.status = PoolStatus::Matured;
-    // face_value == actual_invested + total_discount_earned, so both formulas land here.
-    assert_eq!(calc::total_returns(&data).unwrap(), 1_100_000);
-    assert_eq!(flow::redeemable_total(&data).unwrap(), 1_100_000);
+    data.funds_returned_by_spv = 1_050_000;
+    assert_eq!(calc::total_returns(&data).unwrap(), 1_050_000);
+
+    let mut ib = pending(InstrumentType::InterestBearing, TARGET);
+    ib.status = PoolStatus::Matured;
+    ib.actual_invested = 1_000_000;
+    ib.total_coupons_received = 25_000;
+    ib.total_coupons_distributed = 25_000;
+    ib.funds_returned_by_spv = 1_000_000;
+    assert_eq!(calc::total_returns(&ib).unwrap(), 1_000_000);
 }
 
 #[test]
-fn the_two_total_returns_disagree_for_interest_bearing_pools() {
-    // PARITY: this is the Solidity's behaviour, not a porting bug. The quoted return
-    // (CalculationLibrary) and the paid return (DepositWithdrawalLibrary) use different
-    // formulas. Recorded as a test so the difference cannot be lost.
-    let mut data = pending(InstrumentType::InterestBearing, TARGET);
+fn a_shortfall_is_shared_rather_than_taken_by_whoever_exits_first() {
+    // The SPV returns 900k against a 1.1m face value. Two holders at 60/40 must take
+    // 540k and 360k — not 660k and then whatever is left.
+    let mut data = invested_discounted();
     data.status = PoolStatus::Matured;
-    data.actual_invested = 1_000_000;
-    data.total_coupons_received = 25_000;
-    data.total_coupons_distributed = 25_000;
-    data.funds_returned_by_spv = 1_000_000;
+    data.funds_returned_by_spv = 900_000;
+    data.shares_at_maturity = 1_000_000;
+    data.config.withdrawal_fee_bps = 0;
 
-    assert_eq!(calc::total_returns(&data).unwrap(), 1_000_000);
-    assert_eq!(flow::redeemable_total(&data).unwrap(), 1_025_000);
+    let first = flow::withdraw(
+        &data,
+        flow::WithdrawRequest {
+            assets: 600_000,
+            user_shares: 600_000,
+            total_shares: 1_000_000,
+            now: MATURITY,
+        },
+    )
+    .unwrap();
+    assert_eq!(first.gross, 540_000);
+
+    // Supply has shrunk to 400_000, but the divisor is frozen at settlement.
+    let second = flow::withdraw(
+        &data,
+        flow::WithdrawRequest {
+            assets: 400_000,
+            user_shares: 400_000,
+            total_shares: 400_000,
+            now: MATURITY,
+        },
+    )
+    .unwrap();
+    assert_eq!(second.gross, 360_000);
+    assert_eq!(first.gross + second.gross, 900_000, "the pot is exactly consumed");
 }

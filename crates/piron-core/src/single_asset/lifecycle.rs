@@ -192,6 +192,9 @@ pub struct MaturityOutcome {
     pub new_status: PoolStatus,
     pub funds_returned: Amount,
     pub variance: MaturityVariance,
+    /// Share supply at the moment of settlement. The binding stores this; redemption
+    /// divides by it.
+    pub shares_at_maturity: Amount,
 }
 
 /// `INVESTED -> MATURED`.
@@ -199,6 +202,7 @@ pub fn process_maturity(
     data: &PoolData,
     final_amount: Amount,
     now: u64,
+    total_shares: Amount,
 ) -> Result<MaturityOutcome, Error> {
     super::validate::validate_maturity_processing(data, final_amount, now)?;
 
@@ -215,6 +219,7 @@ pub fn process_maturity(
         new_status: PoolStatus::Matured,
         funds_returned: math::checked_add(data.funds_returned_by_spv, final_amount)?,
         variance,
+        shares_at_maturity: total_shares,
     })
 }
 

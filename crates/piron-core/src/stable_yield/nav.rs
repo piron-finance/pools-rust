@@ -38,13 +38,18 @@ pub fn discounted_value(instrument: &InstrumentHolding, now: u64) -> Result<Amou
 
 /// Mark-to-model value of an interest-bearing instrument: face plus accrued coupon.
 ///
-/// PARITY: note this ignores `purchase_price` entirely — an instrument bought below par is
-/// marked at face from the moment it is held, so the pool books that gain immediately
-/// rather than accreting it. That is what the Solidity does.
+/// Note this ignores `purchase_price` entirely — an instrument bought below par is marked
+/// at face from the moment it is held, so the pool books that gain immediately rather than
+/// accreting it. That matches the Solidity.
 pub fn interest_bearing_value(instrument: &InstrumentHolding, now: u64) -> Result<Amount, Error> {
     if instrument.coupon_frequency == 0 {
         return Err(Error::InvalidCouponFrequency);
     }
+
+    // Interest stops accruing at maturity. Without this an instrument the SPV never
+    // settles keeps inflating NAV without bound, and holders redeem against value the
+    // pool will never receive.
+    let now = now.min(instrument.maturity_date);
 
     let coupon_period = SECONDS_PER_YEAR / instrument.coupon_frequency as u64;
     if coupon_period == 0 {

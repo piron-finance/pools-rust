@@ -364,25 +364,20 @@ fn a_discounted_deal_runs_from_funding_to_redemption() {
     assert_eq!(f.token.balance(&f.investor), 1_400_000 + 631_578);
     assert_eq!(f.escrow.balance(), 421_053);
 
-    // PARITY / DEFECT: the second holder should get their 40% — 421,052. Instead the
-    // entitlement formula pays out against a pot that redemption never decrements while
-    // the share supply shrinks, so it tries to release the whole 1,052,631 and the escrow
-    // refuses. The last holder out is locked away from their own money.
-    //
-    // This is `_handleMaturedWithdrawWithFee` reproduced exactly, with the escrow playing
-    // the same backstop role it plays on EVM. Open question 4 in IMPLEMENTATION_PLAN.md.
-    assert!(
-        f.client.try_withdraw(&f.other, &1).is_err(),
-        "the defect should surface as an escrow shortfall"
-    );
-    assert_eq!(f.client.shares_of(&f.other), 400_000);
-    assert_eq!(f.escrow.balance(), 421_053);
+    // The second holder takes their 40% of the same pot. The divisor was frozen at
+    // settlement, so the first redemption shrinking the supply does not enlarge this one.
+    let second = f.client.withdraw(&f.other, &1);
+    assert_eq!(second, 421_052);
+    assert_eq!(f.client.shares_of(&f.other), 0);
 
-    // And so the pool cannot close: shares are still outstanding.
-    assert_eq!(
-        f.client.try_mark_withdrawn(&f.operator),
-        Err(Ok(Error::SharesStillOutstanding))
-    );
+    // 631,578 + 421,052 = 1,052,630 against a pot of 1,052,631: one unit of rounding dust
+    // stays behind, which is the right direction — the escrow is never short.
+    assert_eq!(first + second, 1_052_630);
+    assert_eq!(f.escrow.balance(), 1);
+
+    // Nothing outstanding, so the pool closes.
+    f.client.mark_withdrawn(&f.operator);
+    assert_eq!(f.client.status(), PoolStatus::Withdrawn as u32);
 }
 
 #[test]

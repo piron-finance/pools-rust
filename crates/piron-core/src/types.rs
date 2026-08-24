@@ -65,6 +65,9 @@ pub struct PoolData {
     pub funds_withdrawn_by_spv: Amount,
     pub funds_returned_by_spv: Amount,
     pub total_fees_collected: Amount,
+    /// Share supply frozen when the pool settles. Redemption divides by this rather than
+    /// live supply, so a holder's fraction of the settled pot cannot move as others exit.
+    pub shares_at_maturity: Amount,
 }
 
 impl PoolData {
@@ -82,6 +85,7 @@ impl PoolData {
             funds_withdrawn_by_spv: 0,
             funds_returned_by_spv: 0,
             total_fees_collected: 0,
+            shares_at_maturity: 0,
         }
     }
 

@@ -374,6 +374,7 @@ impl SingleAssetManager {
                 funds_withdrawn_by_spv: 0,
                 funds_returned_by_spv: 0,
                 total_fees_collected: 0,
+                shares_at_maturity: 0,
             },
         );
         bump_instance(&env);
@@ -587,13 +588,19 @@ impl SingleAssetManager {
         Self::require_role(&env, &caller, RoleKind::Spv)?;
 
         let data = Self::load(&env)?;
-        let outcome = lifecycle::process_maturity(&data, final_amount, env.ledger().timestamp())?;
+        let outcome = lifecycle::process_maturity(
+            &data,
+            final_amount,
+            env.ledger().timestamp(),
+            Self::total_shares(&env),
+        )?;
 
         Self::escrow(&env)?.take(&caller, &final_amount);
 
         let mut state = Self::state(&env)?;
         state.status = outcome.new_status as u32;
         state.funds_returned_by_spv = outcome.funds_returned;
+        state.shares_at_maturity = outcome.shares_at_maturity;
         Self::save_state(&env, &state);
 
         let expected = lifecycle::expected_settlement(&data);
@@ -897,6 +904,7 @@ impl SingleAssetManager {
             funds_withdrawn_by_spv: state.funds_withdrawn_by_spv,
             funds_returned_by_spv: state.funds_returned_by_spv,
             total_fees_collected: state.total_fees_collected,
+            shares_at_maturity: state.shares_at_maturity,
         })
     }
 }

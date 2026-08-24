@@ -141,8 +141,19 @@ fn expected_return_before_investment_is_estimated_from_the_discount_rate() {
 }
 
 #[test]
-fn total_returns_are_face_value_for_discounted_and_returned_funds_for_coupons() {
-    assert_eq!(calc::total_returns(&invested_discounted()).unwrap(), 1_100_000);
+fn total_returns_come_from_what_was_returned_whatever_the_instrument_kind() {
+    // A discounted deal that has not settled yet has nothing to distribute — face value
+    // is the target, not money in hand.
+    assert_eq!(calc::total_returns(&invested_discounted()).unwrap(), 0);
+
+    let mut settled = invested_discounted();
+    settled.funds_returned_by_spv = 1_100_000;
+    assert_eq!(calc::total_returns(&settled).unwrap(), 1_100_000);
+
+    // A deal the SPV settled below face distributes the shortfall, not the projection.
+    let mut short = invested_discounted();
+    short.funds_returned_by_spv = 1_040_000;
+    assert_eq!(calc::total_returns(&short).unwrap(), 1_040_000);
 
     let mut data = invested_interest_bearing();
     data.funds_returned_by_spv = 1_000_000;
