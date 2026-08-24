@@ -67,11 +67,15 @@ pub fn validate_deposit(data: &PoolData, assets: Amount, now: u64) -> Result<(),
 ///
 /// Withdrawing during funding is a cancellation, at maturity a redemption, and in
 /// emergency a refund — three different flows, one gate.
-pub fn validate_withdrawal(data: &PoolData, now: u64) -> Result<(), Error> {
+pub fn validate_withdrawal(data: &PoolData, _now: u64) -> Result<(), Error> {
+    // INVESTED is deliberately absent. The gate used to admit it once past the maturity
+    // date, but the router has no INVESTED branch and rejects it regardless, so the only
+    // thing the extra clause produced was a misleading error at a later line. Settlement
+    // moves the pool to MATURED; that is what opens redemption.
     let allowed = matches!(
         data.status,
         PoolStatus::Funding | PoolStatus::Matured | PoolStatus::Emergency
-    ) || (data.status == PoolStatus::Invested && now >= data.config.maturity_date);
+    );
 
     if !allowed {
         return Err(Error::WithdrawalsNotAllowed);

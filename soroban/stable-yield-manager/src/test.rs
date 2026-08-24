@@ -468,6 +468,7 @@ fn a_short_return_at_maturity_shows_up_as_a_nav_fall() {
 fn only_the_spv_settles_instruments() {
     let f = setup();
     f.client.deposit(&f.alice, &1_000_000);
+    f.client.deploy_capital(&f.spv, &100_000);
     let index = f
         .client
         .add_instrument(&f.admin, &discounted(100_000, 110_000, START));
@@ -491,4 +492,31 @@ fn an_instrument_settles_once() {
         f.client.try_mature_instrument(&f.spv, &index, &550_000),
         Err(Ok(Error::InstrumentNotFound))
     );
+}
+
+#[test]
+fn an_instrument_cannot_be_recorded_larger_than_the_capital_drawn() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+    f.client.deploy_capital(&f.spv, &100_000);
+
+    // Recording 150,000 against 100,000 in flight would clamp the balance at zero and
+    // leave NAV counting the holding in full — 50,000 the pool never had.
+    assert_eq!(
+        f.client
+            .try_add_instrument(&f.admin, &discounted(150_000, 160_000, START)),
+        Err(Ok(Error::ExceedsInFlight))
+    );
+
+    let nav_before = f.client.total_nav();
+    let index = f
+        .client
+        .add_instrument(&f.admin, &discounted(100_000, 110_000, START));
+    assert_eq!(
+        f.client.total_nav(),
+        nav_before,
+        "recording a purchase moves capital between lines, it does not create any"
+    );
+    assert_eq!(f.client.in_flight(), 0);
+    let _ = index;
 }

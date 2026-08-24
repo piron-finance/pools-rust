@@ -331,9 +331,19 @@ fn withdrawals_are_blocked_while_capital_is_deployed() {
 }
 
 #[test]
-fn withdrawals_open_at_maturity_even_before_settlement() {
+fn an_invested_pool_stays_shut_until_it_settles() {
+    // The maturity date passing is not settlement. The router has no INVESTED branch, so
+    // admitting it here only moved the rejection to a later line with a worse message.
     let data = invested_discounted();
-    assert_eq!(validate::validate_withdrawal(&data, MATURITY), Ok(()));
+    assert_eq!(
+        validate::validate_withdrawal(&data, MATURITY),
+        Err(Error::WithdrawalsNotAllowed)
+    );
+
+    // Settling is what opens redemption.
+    let mut settled = invested_discounted();
+    settled.status = PoolStatus::Matured;
+    assert_eq!(validate::validate_withdrawal(&settled, MATURITY), Ok(()));
 }
 
 #[test]

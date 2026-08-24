@@ -14,6 +14,13 @@
 /// rather than a runtime surprise — the same reasoning as `MAX_COUPON_SCHEDULE`.
 pub const MAX_INSTRUMENTS: u32 = 32;
 
+/// Ceiling on a quoted annual coupon, in basis points. Fixed income does not pay 500%, so
+/// a rate above this is a fat finger, and NAV accrues against it until someone notices.
+pub const MAX_ANNUAL_COUPON_RATE: u32 = 5_000;
+
+/// Ceiling on coupon payments per year. Monthly is the shortest schedule Piron buys.
+pub const MAX_COUPON_FREQUENCY: u32 = 12;
+
 pub mod nav;
 pub mod queue;
 pub mod types;
