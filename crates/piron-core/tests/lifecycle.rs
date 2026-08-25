@@ -525,3 +525,26 @@ fn a_shortfall_is_shared_rather_than_taken_by_whoever_exits_first() {
     assert_eq!(second.gross, 360_000);
     assert_eq!(first.gross + second.gross, 900_000, "the pot is exactly consumed");
 }
+
+#[test]
+fn emergency_is_refused_once_the_escrow_has_been_drawn_down() {
+    // While nothing has left, a par refund is honourable: the escrow holds every unit
+    // raised, and one unit per share is exactly what is owed.
+    let mut whole = invested_discounted();
+    whole.status = PoolStatus::Invested;
+    whole.funds_withdrawn_by_spv = 0;
+    assert_eq!(
+        lifecycle::declare_emergency(&whole),
+        Ok(PoolStatus::Emergency)
+    );
+
+    // Once the SPV holds the money, par is a promise the escrow cannot keep. Whoever
+    // claims first would take their full face and leave the rest with an empty escrow.
+    let mut drawn = invested_discounted();
+    drawn.status = PoolStatus::Invested;
+    drawn.funds_withdrawn_by_spv = 1;
+    assert_eq!(
+        lifecycle::declare_emergency(&drawn),
+        Err(Error::InvalidStatusForOperation)
+    );
+}

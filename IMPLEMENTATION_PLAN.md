@@ -86,22 +86,18 @@ Ported Solidity, and where it went:
 
 ---
 
-## Defects in the reference — see `DEFECTS.md`
+## Defects in the reference — all closed
 
-Five findings surfaced by re-deriving the protocol against a second runtime. Three are in
-the redemption path and share one root cause: **a payout computed from state that paying it
-out does not change.** Full analysis, severities and the fix order are in `DEFECTS.md`.
+Five findings surfaced by re-deriving the protocol against a second runtime, plus more
+found while hardening. Three were in the redemption path and shared one root cause: **a
+payout computed from state that paying it out does not change.**
 
-| | Finding | Severity |
-|---|---|---|
-| D1 | Matured redemption over-entitles whoever redeems first | **Critical** |
-| D2 | Interest-bearing redemption pot is overstated | **High** |
-| D3 | Emergency refunds pay par against a possibly impaired escrow | **High** |
-| D4 | Validation advertises a redemption path the router rejects | Low |
-| D5 | `minimumFundingThreshold` declared as an amount, used as a rate | Informational |
+All are fixed in both runtimes. The record, including what was withdrawn and what remains
+open, is in `AUDIT_RECORD.md`.
 
-Each is reproduced by a passing test here, so a fix can be verified against the same cases.
-Fix in the Solidity first: `piron-core` is shared, so one correction reaches both runtimes.
+The approach is worth keeping: fix the Solidity first, then let the failing `piron-core`
+tests prove the correction reached both runtimes. Those failures are the point — a test
+that encodes the old behaviour and does not break is a test that was not testing anything.
 
 ## Stellar — the queue
 

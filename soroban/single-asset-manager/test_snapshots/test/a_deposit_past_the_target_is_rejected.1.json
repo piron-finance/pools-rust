@@ -793,6 +793,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "shares_at_maturity"
+                            },
+                            "val": {
+                              "i128": "0"
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "status"
                             },
                             "val": {
