@@ -141,8 +141,19 @@ fn expected_return_before_investment_is_estimated_from_the_discount_rate() {
 }
 
 #[test]
-fn total_returns_are_face_value_for_discounted_and_returned_funds_for_coupons() {
-    assert_eq!(calc::total_returns(&invested_discounted()).unwrap(), 1_100_000);
+fn total_returns_come_from_what_was_returned_whatever_the_instrument_kind() {
+    // A discounted deal that has not settled yet has nothing to distribute — face value
+    // is the target, not money in hand.
+    assert_eq!(calc::total_returns(&invested_discounted()).unwrap(), 0);
+
+    let mut settled = invested_discounted();
+    settled.funds_returned_by_spv = 1_100_000;
+    assert_eq!(calc::total_returns(&settled).unwrap(), 1_100_000);
+
+    // A deal the SPV settled below face distributes the shortfall, not the projection.
+    let mut short = invested_discounted();
+    short.funds_returned_by_spv = 1_040_000;
+    assert_eq!(calc::total_returns(&short).unwrap(), 1_040_000);
 
     let mut data = invested_interest_bearing();
     data.funds_returned_by_spv = 1_000_000;
@@ -320,9 +331,19 @@ fn withdrawals_are_blocked_while_capital_is_deployed() {
 }
 
 #[test]
-fn withdrawals_open_at_maturity_even_before_settlement() {
+fn an_invested_pool_stays_shut_until_it_settles() {
+    // The maturity date passing is not settlement. The router has no INVESTED branch, so
+    // admitting it here only moved the rejection to a later line with a worse message.
     let data = invested_discounted();
-    assert_eq!(validate::validate_withdrawal(&data, MATURITY), Ok(()));
+    assert_eq!(
+        validate::validate_withdrawal(&data, MATURITY),
+        Err(Error::WithdrawalsNotAllowed)
+    );
+
+    // Settling is what opens redemption.
+    let mut settled = invested_discounted();
+    settled.status = PoolStatus::Matured;
+    assert_eq!(validate::validate_withdrawal(&settled, MATURITY), Ok(()));
 }
 
 #[test]

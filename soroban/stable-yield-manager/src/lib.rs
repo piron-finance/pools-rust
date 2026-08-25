@@ -17,7 +17,9 @@ use soroban_sdk::{
     contract, contractclient, contracterror, contractevent, contractimpl, Address, Env, Vec,
 };
 
-use piron_core::stable_yield::{nav, queue, validate, MAX_INSTRUMENTS};
+use piron_core::stable_yield::{
+    nav, queue, validate, MAX_ANNUAL_COUPON_RATE, MAX_COUPON_FREQUENCY, MAX_INSTRUMENTS,
+};
 
 pub use storage::{ttl,     bump_instance, read_request, read_shares, write_request, write_shares, Config, DataKey, Roles,
     StoredInstrument, StoredRequest,
@@ -116,6 +118,8 @@ pub enum Error {
     NotRequestOwner = 705,
     TooManyInstruments = 706,
     InstrumentNotFound = 707,
+    ExceedsInFlight = 708,
+    InvalidCouponRate = 709,
     AlreadyBound = 715,
 }
 
@@ -567,6 +571,23 @@ impl StableYieldManager {
         if instruments.len() >= MAX_INSTRUMENTS {
             return Err(Error::TooManyInstruments);
         }
+        // An instrument is bought with capital already drawn. Recording one larger than
+        // what is in flight would clamp the balance at zero and leave NAV counting the
+        // holding in full — value the pool never had.
+        if instrument.purchase_price > Self::deployed_outstanding(&env) {
+            return Err(Error::ExceedsInFlight);
+        }
+        if instrument.instrument_type != 0 {
+            if instrument.coupon_frequency == 0 || instrument.coupon_frequency > MAX_COUPON_FREQUENCY
+            {
+                return Err(Error::InvalidCouponFrequency);
+            }
+            if instrument.annual_coupon_rate == 0
+                || instrument.annual_coupon_rate > MAX_ANNUAL_COUPON_RATE
+            {
+                return Err(Error::InvalidCouponRate);
+            }
+        }
         instruments.push_back(instrument.clone());
         let index = instruments.len() - 1;
         env.storage()
@@ -576,7 +597,7 @@ impl StableYieldManager {
         // Recording what was bought converts in-flight capital into a holding.
         Self::set_deployed(
             &env,
-            (Self::deployed_outstanding(&env) - instrument.purchase_price).max(0),
+            Self::deployed_outstanding(&env) - instrument.purchase_price,
         );
 
         InstrumentAdded {

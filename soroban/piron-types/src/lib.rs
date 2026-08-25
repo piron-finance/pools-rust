@@ -113,6 +113,8 @@ pub struct StoredState {
     pub funds_withdrawn_by_spv: i128,
     pub funds_returned_by_spv: i128,
     pub total_fees_collected: i128,
+    /// Share supply frozen at settlement. Redemption divides by this, not live supply.
+    pub shares_at_maturity: i128,
 }
 
 #[contracttype]

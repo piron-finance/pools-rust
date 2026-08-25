@@ -10,27 +10,6 @@ use crate::error::Error;
 use crate::math::{self, Amount};
 use crate::types::{PoolData, PoolStatus};
 
-/// Total distributable to holders after settlement.
-///
-/// PARITY: the Solidity has **two** functions named `calculateTotalReturns` that disagree.
-/// `CalculationLibrary`'s (ported as [`super::calc::total_returns`]) returns
-/// `fundsReturnedBySPV + undistributedCoupons` for interest-bearing pools and is used by
-/// the `calculateUserReturn` view. `DepositWithdrawalLibrary`'s — this one — returns
-/// `actualInvested + totalCouponsReceived` and is what the withdrawal path actually pays.
-/// For discounted pools they agree, because `processInvestment` sets
-/// `faceValue = actualInvested + totalDiscountEarned`. For interest-bearing pools they do
-/// not, so the quoted return and the paid return can differ.
-///
-/// Both are ported faithfully rather than reconciled: `src/` is the reference and this is
-/// a difference to resolve there, not to quietly fix here. Flagged in
-/// `IMPLEMENTATION_PLAN.md` under open questions.
-pub fn redeemable_total(data: &PoolData) -> Result<Amount, Error> {
-    if data.is_discounted() {
-        return math::checked_add(data.actual_invested, data.total_discount_earned);
-    }
-    math::checked_add(data.actual_invested, data.total_coupons_received)
-}
-
 /// What a deposit produces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DepositOutcome {
@@ -142,22 +121,20 @@ fn matured_withdrawal(data: &PoolData, req: WithdrawRequest) -> Result<Withdrawa
     if req.user_shares == 0 {
         return Err(Error::NoShares);
     }
-    if req.total_shares == 0 {
+    if data.shares_at_maturity == 0 {
         return Err(Error::NoSharesOutstanding);
     }
 
     // The whole position is redeemed regardless of what was asked for; a settled pool has
     // nothing left to stay invested in.
     //
-    // PARITY / DEFECT: `total` is recomputed from pool state that redemption never
-    // decrements, while `req.total_shares` shrinks with every burn. Two holders at 60/40
-    // therefore receive 60% and then 100% of the same pot rather than 60% and 40%. This
-    // is what `_handleMaturedWithdrawWithFee` does on EVM, where the escrow running dry
-    // is what stops it — the last redeemer is locked out rather than overpaid. Ported
-    // faithfully; open question 4 in IMPLEMENTATION_PLAN.md. The fix, when it is made in
-    // `src/`, is to decrement a distributable balance as it is paid out.
-    let total = redeemable_total(data)?;
-    let gross = math::pro_rata(req.user_shares, total, req.total_shares)?;
+    // The pot is what the SPV actually returned plus coupons not yet distributed, and the
+    // divisor is the supply frozen at settlement. Recomputing the pot from pool state
+    // while dividing by a live supply that shrinks with every burn would hand each
+    // successive holder a larger fraction of the same money: two holders at 60/40 would
+    // take 60% and then 100%, and the last one out would find the escrow empty.
+    let total = super::calc::total_returns(data)?;
+    let gross = math::pro_rata(req.user_shares, total, data.shares_at_maturity)?;
     let fee = math::bps_of(gross, data.config.withdrawal_fee_bps)?;
 
     Ok(WithdrawalOutcome {

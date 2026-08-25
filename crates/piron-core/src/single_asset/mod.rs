@@ -18,7 +18,7 @@ pub use calc::{
     unclaimed_coupons, user_return, CouponClaim, COUPON_DATE_TOLERANCE_SECS,
 };
 pub use flow::{
-    deposit, redeemable_total, withdraw, DepositOutcome, WithdrawRequest, WithdrawalKind,
+    deposit, withdraw, DepositOutcome, WithdrawRequest, WithdrawalKind,
     WithdrawalOutcome,
 };
 pub use lifecycle::{

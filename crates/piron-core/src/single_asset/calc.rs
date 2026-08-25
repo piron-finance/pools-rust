@@ -62,9 +62,6 @@ pub fn face_value_from(actual_raised: Amount, discount_rate: u32) -> Result<Amou
 
 /// Everything the pool pays out at maturity.
 pub fn total_returns(data: &PoolData) -> Result<Amount, Error> {
-    if data.is_discounted() {
-        return Ok(data.config.face_value);
-    }
     let undistributed = math::checked_sub(
         data.total_coupons_received,
         data.total_coupons_distributed,
@@ -123,8 +120,14 @@ pub fn user_return(
             math::pro_rata(user_shares, value, total_shares)
         }
         PoolStatus::Matured => {
+            // Same divisor the redemption path uses. Quoting against live supply while
+            // paying against the frozen count would have the two disagree the moment the
+            // first holder exits.
+            if data.shares_at_maturity == 0 {
+                return Ok(0);
+            }
             let returns = total_returns(data)?;
-            math::pro_rata(user_shares, returns, total_shares)
+            math::pro_rata(user_shares, returns, data.shares_at_maturity)
         }
         PoolStatus::Emergency => math::pro_rata(user_shares, data.total_raised, total_shares),
         _ => Ok(0),

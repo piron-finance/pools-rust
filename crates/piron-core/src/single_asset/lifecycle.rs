@@ -192,6 +192,9 @@ pub struct MaturityOutcome {
     pub new_status: PoolStatus,
     pub funds_returned: Amount,
     pub variance: MaturityVariance,
+    /// Share supply at the moment of settlement. The binding stores this; redemption
+    /// divides by it.
+    pub shares_at_maturity: Amount,
 }
 
 /// `INVESTED -> MATURED`.
@@ -199,6 +202,7 @@ pub fn process_maturity(
     data: &PoolData,
     final_amount: Amount,
     now: u64,
+    total_shares: Amount,
 ) -> Result<MaturityOutcome, Error> {
     super::validate::validate_maturity_processing(data, final_amount, now)?;
 
@@ -215,6 +219,7 @@ pub fn process_maturity(
         new_status: PoolStatus::Matured,
         funds_returned: math::checked_add(data.funds_returned_by_spv, final_amount)?,
         variance,
+        shares_at_maturity: total_shares,
     })
 }
 
@@ -229,13 +234,26 @@ pub fn mark_withdrawn(data: &PoolData, total_shares: Amount) -> Result<PoolStatu
     Ok(PoolStatus::Withdrawn)
 }
 
-/// Moves a pool to `EMERGENCY` from any live state.
+/// Moves a pool to `EMERGENCY`, while the escrow is still whole.
 ///
-/// Deliberately permissive about the starting status: emergency is the escape hatch, and
-/// refusing to enter it because of a state check is the wrong failure mode. Only a pool
-/// that is already finished cannot enter it.
+/// The permissive version of this was wrong, and worth spelling out because the reasoning
+/// sounded right: emergency is the escape hatch, so refusing to enter it on a state check
+/// looks like the wrong failure mode. But the refund it opens pays one unit per share.
+/// That is exactly right while the escrow still holds everything raised, and wrong the
+/// moment it does not — against a drawn-down escrow the first holders out take par and
+/// the rest find nothing left. An escape hatch that pays the fastest claimant in full is
+/// not an escape hatch.
+///
+/// `funds_withdrawn_by_spv` is the precise test rather than a status check, because it
+/// admits a pool sitting in `PendingInvestment` that has not actually transferred yet.
+///
+/// A mid-deal SPV default needs refunds pro-rated against what the escrow holds. That is a
+/// different mechanism, not a loosening of this one.
 pub fn declare_emergency(data: &PoolData) -> Result<PoolStatus, Error> {
     if matches!(data.status, PoolStatus::Withdrawn | PoolStatus::Emergency) {
+        return Err(Error::InvalidStatusForOperation);
+    }
+    if data.funds_withdrawn_by_spv != 0 {
         return Err(Error::InvalidStatusForOperation);
     }
     Ok(PoolStatus::Emergency)
