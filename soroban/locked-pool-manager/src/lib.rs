@@ -598,22 +598,21 @@ impl LockedPoolManager {
         Ok(())
     }
 
-    /// Cash the pool can send out without stranding the payouts it has already promised.
+    /// Cash the SPV may draw to invest.
     ///
-    /// Unlike a stable-yield reserve ratio, this is not a policy choice — the amounts and
-    /// the dates are already fixed by the positions that exist.
+    /// This used to hold back principal plus the interest owed at maturity, on the
+    /// reasoning that promised payouts must stay covered at all times. The reasoning is
+    /// wrong, and wrong in a way that makes the product impossible: the escrow only ever
+    /// holds the principal, so a pool that must also cover the interest can never release
+    /// anything, and a locked pool exists precisely to have that principal invested. The
+    /// yield that pays the promised APY has to come from somewhere.
+    ///
+    /// The obligation is met at maturity, out of what the SPV returns — capital plus the
+    /// yield it earned. An early exit that outruns the escrow is what the yield reserve
+    /// backstops. This matches `createPendingAllocation` in the Solidity, which lets the
+    /// SPV draw up to the principal held.
     pub fn deployable(env: Env) -> i128 {
-        let held = Self::escrow(&env).map(|e| e.balance()).unwrap_or(0);
-        let metrics = Self::metrics(&env);
-        // Principal plus the interest still owed at maturity is what must stay covered.
-        //
-        // Capital already with the SPV is deliberately *not* netted off: it is still owed
-        // to holders, and the escrow balance already reflects that it left. Subtracting it
-        // here would count the same departure twice and let the pool lend out its cover.
-        let committed = metrics
-            .total_principal_locked
-            .saturating_add(metrics.interest_pending_maturity);
-        (held - committed).max(0)
+        Self::escrow(&env).map(|e| e.balance()).unwrap_or(0).max(0)
     }
 
     // ------------------------------------------------------------ views

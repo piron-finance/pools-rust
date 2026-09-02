@@ -370,21 +370,20 @@ fn an_unknown_position_is_reported_not_invented() {
 // ---------------------------------------------------------------- spv allocation
 
 #[test]
-fn only_uncommitted_cash_can_go_to_the_spv() {
+fn the_spv_can_draw_the_principal_to_invest_it() {
     let f = setup();
     // 500,000 sponsor float plus a 1,000,000 deposit owing 1,059,178 at maturity.
-    let id = f.client.deposit(&f.investor, &PRINCIPAL, &0, &1);
-    let _ = id;
+    let _ = f.client.deposit(&f.investor, &PRINCIPAL, &0, &1);
 
-    // Held 1,500,000, committed 1,059,178 — the rest is free.
-    assert_eq!(f.client.deployable(), 1_500_000 - (PRINCIPAL + INTEREST));
+    // All of it is drawable. Holding the principal back would leave the pool nothing to
+    // invest, and the yield that pays the promised APY has to come from somewhere.
+    assert_eq!(f.client.deployable(), 1_500_000);
 
-    let free = f.client.deployable();
     assert_eq!(
-        f.client.try_deploy_to_spv(&f.admin, &(free + 1)),
+        f.client.try_deploy_to_spv(&f.admin, &1_500_001),
         Err(Ok(Error::InsufficientLiquidity))
     );
-    f.client.deploy_to_spv(&f.admin, &free);
+    f.client.deploy_to_spv(&f.admin, &1_500_000);
     assert_eq!(f.client.deployable(), 0);
 }
 
@@ -401,15 +400,21 @@ fn returning_capital_frees_it_again() {
 }
 
 #[test]
-fn a_committed_pool_will_not_send_out_what_it_owes() {
+fn a_position_pays_in_full_once_the_spv_returns() {
     let f = setup();
-    // Every position's payout stays covered, whatever the SPV asks for.
     f.client.deposit(&f.investor, &PRINCIPAL, &0, &1);
-    let free = f.client.deployable();
-    f.client.deploy_to_spv(&f.admin, &free);
+
+    // The whole float goes out to be invested — that is the point of the pool.
+    f.client.deploy_to_spv(&f.admin, &f.client.deployable());
+    assert_eq!(f.client.deployable(), 0);
 
     f.env.ledger().set_timestamp(START + TERM);
-    // The redemption still pays in full, because the pool never lent out its cover.
+
+    // With the capital still out, there is nothing to redeem against.
+    assert!(f.client.try_redeem(&f.investor, &1).is_err());
+
+    // The SPV returns the principal and the yield it earned, and the position pays in full.
+    f.client.return_from_spv(&f.admin, &(PRINCIPAL + INTEREST));
     assert_eq!(f.client.redeem(&f.investor, &1), PRINCIPAL + INTEREST);
 }
 
