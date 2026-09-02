@@ -80,6 +80,7 @@ pub enum Error {
     HoldingPeriodNotMet = 403,
     InsufficientLiquidity = 404,
     ReserveBreached = 405,
+    NoYieldReserve = 410,
     RequestAlreadyProcessed = 406,
     RequestExpired = 407,
     QueueEmpty = 408,
@@ -221,6 +222,20 @@ pub trait Escrow {
 // ---------------------------------------------------------------- events
 
 #[contractevent]
+#[derive(Clone, Debug)]
+pub struct ReserveBorrowed {
+    pub amount: i128,
+    pub outstanding: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct ReserveRepaid {
+    pub amount: i128,
+    pub outstanding: i128,
+}
+
+#[contractevent]
 pub struct TierAdded {
     pub tier_index: u32,
     pub duration_days: u32,
@@ -273,6 +288,14 @@ pub struct PositionRolledOver {
     pub principal: i128,
 }
 
+/// The slice of the yield reserve this pool needs. Declared here rather than importing the
+/// reserve crate, which would make the two contracts co-dependent at build time.
+#[contractclient(name = "ReserveClient")]
+pub trait Reserve {
+    fn loan_to_pool(env: Env, caller: Address, pool: Address, recipient: Address, amount: i128);
+    fn repay_loan(env: Env, from: Address, pool: Address, amount: i128);
+}
+
 #[contract]
 pub struct LockedPoolManager;
 
@@ -284,7 +307,11 @@ impl LockedPoolManager {
         escrow: Address,
         asset: Address,
         min_investment: i128,
+        reserve: Option<Address>,
     ) {
+        if let Some(r) = reserve {
+            env.storage().instance().set(&DataKey::Reserve, &r);
+        }
         env.storage().instance().set(&DataKey::Roles, &roles);
         env.storage().instance().set(&DataKey::Escrow, &escrow);
         env.storage().instance().set(&DataKey::Asset, &asset);
@@ -482,6 +509,17 @@ impl LockedPoolManager {
         write_position(&env, position_id, &stored);
 
         let escrow = Self::escrow(&env)?;
+
+        // The payout carries interest accrued to today, and the escrow holds only the
+        // principal until the SPV returns yield. So an exit is normally short by exactly
+        // the interest earned, and without cover it fails — the ordinary case, not an
+        // edge one. The yield reserve lends the difference and the pool owes it back.
+        let needed = exit.payout.saturating_add(exit.penalty);
+        let held = escrow.balance();
+        if needed > held {
+            Self::borrow_from_reserve(&env, needed - held)?;
+        }
+
         if exit.payout > 0 {
             escrow.release(&owner, &exit.payout);
         }
@@ -595,6 +633,71 @@ impl LockedPoolManager {
         env.storage().instance().set(&DataKey::Metrics, &metrics);
 
         CapitalReturned { amount }.publish(&env);
+        Ok(())
+    }
+
+    fn escrow_address(env: &Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Escrow)
+            .ok_or(Error::NotInitialized)
+    }
+
+    /// Draws `amount` from the yield reserve into the escrow and records the debt.
+    fn borrow_from_reserve(env: &Env, amount: i128) -> Result<(), Error> {
+        let reserve: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Reserve)
+            .ok_or(Error::NoYieldReserve)?;
+
+        ReserveClient::new(env, &reserve).loan_to_pool(
+            &env.current_contract_address(),
+            &env.current_contract_address(),
+            &Self::escrow_address(env)?,
+            &amount,
+        );
+
+        let owed = Self::pool_debt(env.clone()).saturating_add(amount);
+        env.storage().instance().set(&DataKey::Debt, &owed);
+        ReserveBorrowed { amount, outstanding: owed }.publish(env);
+        Ok(())
+    }
+
+    /// What the pool owes the yield reserve for early exits it could not cover.
+    pub fn pool_debt(env: Env) -> i128 {
+        env.storage().instance().get(&DataKey::Debt).unwrap_or(0)
+    }
+
+    /// Repays the reserve out of the SPV's own funds.
+    ///
+    /// The SPV holds the returned capital and the yield it earned, so it is the party that
+    /// can settle. Leaving the debt outstanding would have the reserve quietly subsidising
+    /// this pool's holders at every other pool's expense.
+    pub fn settle_debt(env: Env, caller: Address, amount: i128) -> Result<(), Error> {
+        Self::require_spv(&env, &caller)?;
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        let owed = Self::pool_debt(env.clone());
+        if amount > owed {
+            return Err(Error::InvalidAmount);
+        }
+
+        let reserve: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Reserve)
+            .ok_or(Error::NoYieldReserve)?;
+        ReserveClient::new(&env, &reserve).repay_loan(
+            &caller,
+            &env.current_contract_address(),
+            &amount,
+        );
+
+        let remaining = owed - amount;
+        env.storage().instance().set(&DataKey::Debt, &remaining);
+        ReserveRepaid { amount, outstanding: remaining }.publish(&env);
         Ok(())
     }
 

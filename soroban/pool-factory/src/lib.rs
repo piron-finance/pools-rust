@@ -200,6 +200,7 @@ impl PoolFactory {
         roles: Roles,
         asset: Address,
         min_investment: i128,
+        reserve: Option<Address>,
     ) -> Result<PoolAddresses, Error> {
         Self::require_creator(&env, &caller)?;
         let escrow = Self::deploy_escrow(&env, &salt, &asset)?;
@@ -208,7 +209,7 @@ impl PoolFactory {
             .with_current_contract(Self::salt_for(&env, &salt, TAG_MANAGER))
             .deploy_v2(
                 Self::manager_wasm(&env, PoolType::Locked)?,
-                (roles, escrow.clone(), asset.clone(), min_investment),
+                (roles, escrow.clone(), asset.clone(), min_investment, reserve),
             );
         Self::finish(&env, &salt, PoolType::Locked, manager, escrow, None, asset)
     }

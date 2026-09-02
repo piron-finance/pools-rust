@@ -6,7 +6,7 @@
 use pool_escrow::{PoolEscrow, PoolEscrowClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env};
 
 use super::*;
 
@@ -66,7 +66,13 @@ fn setup() -> Fixture {
     };
     let id = env.register(
         LockedPoolManager,
-        (roles, escrow_id.clone(), asset.address(), 1_000i128),
+        (
+            roles,
+            escrow_id.clone(),
+            asset.address(),
+            1_000i128,
+            None::<Address>,
+        ),
     );
     escrow.bind_manager(&id);
 
@@ -426,4 +432,120 @@ fn only_the_spv_role_moves_capital() {
         f.client.try_deploy_to_spv(&f.investor, &1_000),
         Err(Ok(Error::Unauthorized))
     );
+}
+
+
+// ---------------------------------------------------------------- reserve-backed exit
+
+/// Stands in for the yield reserve. Only the two calls the pool makes, so the test is
+/// about the pool's behaviour rather than the reserve's access control.
+#[contract]
+pub struct MockReserve;
+
+#[contractimpl]
+impl MockReserve {
+    pub fn __constructor(env: Env, asset: Address) {
+        env.storage().instance().set(&symbol_short!("asset"), &asset);
+    }
+
+    pub fn loan_to_pool(env: Env, caller: Address, pool: Address, recipient: Address, amount: i128) {
+        caller.require_auth();
+        let asset: Address = env.storage().instance().get(&symbol_short!("asset")).unwrap();
+        TokenClient::new(&env, &asset).transfer(
+            &env.current_contract_address(),
+            &recipient,
+            &amount,
+        );
+        let key = symbol_short!("lent");
+        let lent: i128 = env.storage().instance().get(&key).unwrap_or(0);
+        env.storage().instance().set(&key, &(lent + amount));
+        let _ = pool;
+    }
+
+    pub fn repay_loan(env: Env, from: Address, pool: Address, amount: i128) {
+        from.require_auth();
+        let asset: Address = env.storage().instance().get(&symbol_short!("asset")).unwrap();
+        TokenClient::new(&env, &asset).transfer(&from, &env.current_contract_address(), &amount);
+        let key = symbol_short!("lent");
+        let lent: i128 = env.storage().instance().get(&key).unwrap_or(0);
+        env.storage().instance().set(&key, &(lent - amount));
+        let _ = pool;
+    }
+
+    pub fn lent(env: Env) -> i128 {
+        env.storage().instance().get(&symbol_short!("lent")).unwrap_or(0)
+    }
+}
+
+#[test]
+fn an_early_exit_is_covered_by_the_reserve_when_the_escrow_holds_only_principal() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(START);
+
+    let admin = Address::generate(&env);
+    let spv = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let issuer = Address::generate(&env);
+
+    let asset = env.register_stellar_asset_contract_v2(issuer);
+    let token = TokenClient::new(&env, &asset.address());
+    let minter = StellarAssetClient::new(&env, &asset.address());
+    minter.mint(&investor, &PRINCIPAL);
+    minter.mint(&spv, &PRINCIPAL);
+
+    let reserve = env.register(MockReserve, (asset.address(),));
+    minter.mint(&reserve, &PRINCIPAL);
+
+    let escrow_id = env.register(PoolEscrow, (admin.clone(), asset.address()));
+    let escrow = PoolEscrowClient::new(&env, &escrow_id);
+
+    let roles = Roles {
+        admin: admin.clone(),
+        operator: admin.clone(),
+        spv: spv.clone(),
+        emergency: admin.clone(),
+        treasury: treasury.clone(),
+    };
+    let id = env.register(
+        LockedPoolManager,
+        (
+            roles,
+            escrow_id.clone(),
+            asset.address(),
+            1_000i128,
+            Some(reserve.clone()),
+        ),
+    );
+    escrow.bind_manager(&id);
+    let client = LockedPoolManagerClient::new(&env, &id);
+    client.add_tier(&admin, &tier());
+
+    // No sponsor float: the escrow holds exactly the principal, which is the ordinary
+    // state before the SPV has returned any yield.
+    client.deposit(&investor, &PRINCIPAL, &0, &1);
+    assert_eq!(token.balance(&escrow_id), PRINCIPAL);
+
+    // Part-way through the term, so there is accrued interest the escrow cannot cover.
+    env.ledger().set_timestamp(START + TERM / 2);
+    let quoted = client.quote_early_exit(&1);
+
+    let before = token.balance(&investor);
+    let payout = client.exit_early(&investor, &1);
+
+    assert_eq!(payout, quoted, "the exit pays what it quoted");
+    assert_eq!(token.balance(&investor) - before, payout);
+    assert!(client.pool_debt() > 0, "the shortfall was borrowed, not conjured");
+    assert_eq!(
+        MockReserveClient::new(&env, &reserve).lent(),
+        client.pool_debt(),
+        "what the reserve lent is what the pool owes"
+    );
+
+    // The SPV settles out of the capital it returned.
+    let owed = client.pool_debt();
+    client.settle_debt(&spv, &owed);
+    assert_eq!(client.pool_debt(), 0);
+    assert_eq!(MockReserveClient::new(&env, &reserve).lent(), 0);
 }

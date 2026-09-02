@@ -26,9 +26,17 @@ upload() {
   stellar contract upload --wasm "$WASM/$1.wasm" --source-account "$SOURCE" \
     --network "$NETWORK" 2>/dev/null | tail -1; }
 
+# Errors go to the terminal rather than /dev/null: a deploy that dies without saying why
+# is worse than one that fails loudly, and `set -e` cannot see past a pipeline anyway.
 call() { local id="$1"; shift
-  stellar contract invoke --id "$id" --source-account "$SOURCE" \
-    --network "$NETWORK" -- "$@" 2>/dev/null | tail -1; }
+  local out
+  if ! out="$(stellar contract invoke --id "$id" --source-account "$SOURCE" \
+      --network "$NETWORK" -- "$@" 2>&1)"; then
+    echo "FAILED: invoke $id $*" >&2
+    echo "$out" | tail -5 >&2
+    return 1
+  fi
+  echo "$out" | tail -1; }
 
 echo "Building..."
 (cd "$ROOT" && cargo build --target wasm32v1-none --release --quiet)
@@ -102,10 +110,31 @@ SHARE="$(echo "$POOL" | python3 -c 'import json,sys; print(json.load(sys.stdin)[
 call "$FEES" set_collector --caller "$ADMIN" --collector "$MANAGER" --allowed true >/dev/null
 call "$RESERVE_C" set_source --caller "$ADMIN" --source "$MANAGER" --allowed true >/dev/null
 
+# A locked pool, wired to the reserve.
+#
+# Early exit pays principal plus interest accrued to today, and the escrow holds only the
+# principal until the SPV returns yield — so the exit is short by the interest earned, in
+# the ordinary case rather than an edge one. The reserve lends the difference, which means
+# the pool has to be able to call it (Operator) and to repay it (a registered source).
+echo "Creating a locked pool..."
+LOCKED_SALT="$(openssl rand -hex 32)"
+LOCKED="$(call "$FACTORY" create_locked_pool --caller "$ADMIN" --salt "$LOCKED_SALT" \
+  --roles "$ROLES" --asset "$ASSET" --min_investment 10000000 --reserve "\"$RESERVE_C\"")"
+LOCKED_MANAGER="$(echo "$LOCKED" | python3 -c 'import json,sys; print(json.load(sys.stdin)["manager"])')"
+LOCKED_ESCROW="$(echo "$LOCKED" | python3 -c 'import json,sys; print(json.load(sys.stdin)["escrow"])')"
+
+call "$ACCESS" grant_during_deployment --caller "$ADMIN" --role 2 --account "$LOCKED_MANAGER" >/dev/null
+call "$RESERVE_C" set_source --caller "$ADMIN" --source "$LOCKED_MANAGER" --allowed true >/dev/null
+call "$FEES" set_collector --caller "$ADMIN" --collector "$LOCKED_MANAGER" --allowed true >/dev/null
+
+# The SPV repays the reserve out of the capital it returns, so it settles debts directly
+# rather than through the pool, which holds no funds of its own.
+call "$RESERVE_C" set_source --caller "$ADMIN" --source "$SPV" --allowed true >/dev/null
+
 # Every contract names the timelock as its upgrader, so no bytecode in the system can be
 # replaced without passing the 72-hour delay and the guardian's brake.
 echo "Binding upgraders..."
-for c in "$ACCESS" "$REGISTRY" "$FEES" "$FACTORY" "$RESERVE_C" "$MANAGER"; do
+for c in "$ACCESS" "$REGISTRY" "$FEES" "$FACTORY" "$RESERVE_C" "$MANAGER" "$LOCKED_MANAGER"; do
   call "$c" bind_upgrader --caller "$ADMIN" --upgrader "$TIMELOCK" >/dev/null
 done
 call "$TIMELOCK" bind_upgrader --caller "$ADMIN" --upgrader "$TIMELOCK" >/dev/null
@@ -130,6 +159,8 @@ PIRON_STABLE_YIELD_WASM=$STABLE_WASM
 PIRON_POOL_MANAGER=$MANAGER
 PIRON_POOL_ESCROW=$ESCROW
 PIRON_POOL_SHARE=$SHARE
+PIRON_LOCKED_MANAGER=$LOCKED_MANAGER
+PIRON_LOCKED_ESCROW=$LOCKED_ESCROW
 PIRON_ADMIN=$ADMIN
 PIRON_SPV=$SPV
 PIRON_OPERATOR=$OPERATOR

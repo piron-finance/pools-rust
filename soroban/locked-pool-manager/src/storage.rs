@@ -30,6 +30,10 @@ pub enum DataKey {
     /// stable ordering. Ids are not comparable across chains, which nothing relies on.
     NextPositionId,
     Position(u64),
+    /// Yield reserve backing early exits. Absent on pools deployed without one.
+    Reserve,
+    /// Outstanding reserve loan, in asset units.
+    Debt,
 }
 
 pub fn bump_instance(env: &Env) {
