@@ -98,11 +98,39 @@ Each step ends in something runnable. No step depends on a decision from a later
 | 7 | Stable yield, queue last | The ring buffer under a CU bound |
 | 8 | Devnet, then the same on-chain verification Stellar got | Shortfall case and emergency guard confirmed on chain |
 
-## Decisions needed before step 3
+## Decisions taken
 
-1. **Withdrawal queue capacity** — a fixed ring buffer needs a number. What is a realistic
-   worst case for concurrent pending withdrawals on one stable-yield pool?
-2. **Upgrade authority** — squads multisig, a governance program, or the same multisig
-   pattern as the Stellar timelock?
-3. **Share token** — SPL mint owned by the pool PDA is the obvious choice. Confirm nothing
-   downstream needs Token-2022 features, given compliance is off-chain.
+**Withdrawal queue: capacity 256, in its own account.**
+
+A realistic worst case is around 110 concurrent pending withdrawals on one pool, which
+lands awkwardly close to a hard limit: an account created through a CPI can be at most
+10,240 bytes, and at 81 bytes per request that is 110 entries almost exactly. Sizing the
+buffer at the expected worst case leaves nothing, and a full queue means withdrawal
+requests revert.
+
+256 needs one `init` plus two `realloc`s at pool setup — two extra instructions, once —
+for roughly 0.29 SOL of rent-exemption, recoverable when the pool closes. Keeping the
+queue out of the pool account also stops every NAV read loading 20KB it does not need.
+
+This is the first place the port genuinely diverges rather than being wired differently:
+neither Stellar nor EVM has a per-account size ceiling.
+
+**Upgrade authority: a Squads v4 multisig with a time-delay policy.**
+
+There is no timelock contract to deploy — on Solana the program's upgrade authority is
+just an address, and best practice is a multisig rather than a keypair. Squads v4 is the
+de facto standard and supports time-locked execution, so the 72-hour delay
+`upgrade-timelock` enforces on Stellar is a policy setting rather than a program we write
+and audit.
+
+Making the program immutable by setting the authority to `None` is a decision for after an
+audit, not before one: it also removes the ability to fix what an audit finds.
+
+**Share token: a plain SPL mint owned by the pool PDA.**
+
+Token-2022's extensions — transfer hook, permanent delegate, default-frozen accounts — are
+the ERC-3643 analogue, and KYC lives in the backend and frontend on every chain. The hook
+would be a program we write and audit ourselves, where the Stellar equivalent would have
+been someone else's library, and Token-2022 mints still have uneven wallet and DEX support.
+
+Nothing downstream needs them.
