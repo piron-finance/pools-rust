@@ -22,9 +22,14 @@ pub const POSITION_SEED: &[u8] = b"position";
 pub struct Pool {
     pub pool_id: u64,
     pub authority: Pubkey,
+    /// The SPV wallet permitted to draw funds and settle. Held per pool so it can be
+    /// rotated without redeploying, matching how the Solidity passes it at creation.
+    pub spv: Pubkey,
     pub asset_mint: Pubkey,
+    /// The token account holding the asset. A program cannot hold tokens; it holds the
+    /// authority over an account that does.
     pub vault: Pubkey,
-    pub escrow: Pubkey,
+    pub share_mint: Pubkey,
 
     // --- terms ---
     pub instrument_type: u8,
@@ -55,6 +60,15 @@ pub struct Pool {
     /// Share supply frozen at settlement. Redemption divides by this, not live supply.
     pub shares_at_maturity: u64,
 
+    /// What the pool is worth right now, written on every mutation.
+    ///
+    /// Soroban exposes this as `pool_value()`, a call. Solana has no view functions — a
+    /// client fetches the account and reads it — so anything a caller needs has to be
+    /// stored. Recomputing it client-side would work until the client and the program
+    /// disagreed about what the pool was worth at the moment it moved money, which
+    /// surfaces as an argument about a share price rather than an error.
+    pub pool_value: u64,
+
     pub bump: u8,
 }
 
@@ -75,6 +89,27 @@ impl Pool {
     ///
     /// Token amounts are `u64` on Solana and `i128` in core. Widening is always safe;
     /// the narrowing direction is checked at the point of return.
+    /// Writes the pool's current value. Called after every mutation, so a reader of the
+    /// account never sees a stale figure alongside fresh balances.
+    pub fn refresh_value(&mut self, now: u64) -> anchor_lang::Result<()> {
+        let data = self
+            .to_core()
+            .map_err(|e| anchor_lang::error::Error::from(
+                anchor_lang::solana_program::program_error::ProgramError::Custom(e.code()),
+            ))?;
+        let value = piron_core::single_asset::calc::current_pool_value(&data, now)
+            .and_then(to_u64)
+            .map_err(|e| anchor_lang::error::Error::from(
+                anchor_lang::solana_program::program_error::ProgramError::Custom(e.code()),
+            ))?;
+        self.pool_value = value;
+        Ok(())
+    }
+
+    pub fn set_status(&mut self, status: core_types::PoolStatus) {
+        self.status = status as u8;
+    }
+
     pub fn to_core(&self) -> core::result::Result<core_types::PoolData, piron_core::Error> {
         // The account stores the schedule as two parallel fixed arrays, because an account
         // is sized once at creation and cannot hold a growable Vec. `CouponSchedule` is the
@@ -183,9 +218,10 @@ mod tests {
         let pool = Pool {
             pool_id: 1,
             authority: Pubkey::new_unique(),
+            spv: Pubkey::new_unique(),
             asset_mint: Pubkey::new_unique(),
             vault: Pubkey::new_unique(),
-            escrow: Pubkey::new_unique(),
+            share_mint: Pubkey::new_unique(),
             instrument_type: 0,
             face_value: 0,
             purchase_price: 0,
@@ -210,6 +246,7 @@ mod tests {
             funds_returned_by_spv: 0,
             total_fees_collected: 0,
             shares_at_maturity: 0,
+            pool_value: 0,
             bump: 0,
         };
         // 8 for the discriminator, which try_to_vec does not include.
@@ -247,9 +284,10 @@ mod tests {
         let mut pool = Pool {
             pool_id: 1,
             authority: Pubkey::new_unique(),
+            spv: Pubkey::new_unique(),
             asset_mint: Pubkey::new_unique(),
             vault: Pubkey::new_unique(),
-            escrow: Pubkey::new_unique(),
+            share_mint: Pubkey::new_unique(),
             instrument_type: 1,
             face_value: 1_000,
             purchase_price: 950,
@@ -274,6 +312,7 @@ mod tests {
             funds_returned_by_spv: 0,
             total_fees_collected: 0,
             shares_at_maturity: 0,
+            pool_value: 0,
             bump: 0,
         };
         pool.coupon_dates[..3].copy_from_slice(&[200, 400, 600]);

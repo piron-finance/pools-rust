@@ -31,3 +31,7 @@ piron-core = { path = "../../crates/piron-core" }
 # attack; here the account is a PDA seeded on (pool, owner), so a second init resolves to
 # the same address and the handler treats an existing position as existing.
 anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
+# Plain SPL Token, not Token-2022. The 2022 extensions — transfer hook, permanent
+# delegate, default-frozen accounts — are the ERC-3643 analogue, and KYC lives off-chain on
+# every chain Piron runs on. The hook would also be a program we write and audit ourselves.
+anchor-spl = "1.1.2"
