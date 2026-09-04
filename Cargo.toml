@@ -19,7 +19,7 @@ members = [
 # Solana is excluded: it builds through `cargo-build-sbf`, which manages its own toolchain.
 # Being outside the workspace means it cannot inherit [workspace.package], so its version,
 # edition and license are spelled out in its own manifest and have to be kept in step.
-exclude = ["solana/single-asset"]
+exclude = ["solana/single-asset", "solana/locked", "solana/stable-yield"]
 
 [workspace.package]
 version = "0.1.0"
