@@ -155,12 +155,12 @@ because both are hard to change once instructions depend on them.
 | | Step | Done when |
 |---|---|---|
 | 1 | ~~Toolchain: Solana CLI, Anchor, `cargo-build-sbf`; pin the real Anchor version~~ **done** | `cargo build-sbf` succeeds on the existing scaffold |
-| 2 | The checked `i128`↔`u64` boundary, plus `Pool::LEN` and `Position::LEN` verified against `size_of` | A test asserts both sizes and a conversion test covers overflow |
-| 3 | PDA seeds as a published constant, and the event set the indexer needs | A TypeScript consumer derives the same addresses from the same constants |
-| 4 | NAV written to the pool account on every mutation | Reading the account gives the figure the program acted on |
-| 5 | Single-asset instruction set, mirroring the Soroban entry points | The two `lib.rs` files read side by side as the same sequence |
-| 6 | SPL mint for shares, vault PDA, escrow authority | Localnet: deposit mints, withdraw burns, vault balances move |
-| 7 | Localnet integration: the full arc, including the shortfall case | Escrow lands on zero with nothing outstanding, as on Stellar |
+| 2 | ~~The checked `i128`↔`u64` boundary, plus `Pool::LEN` and `Position::LEN` verified against `size_of`~~ **done** | A test asserts both sizes and a conversion test covers overflow |
+| 3 | ~~PDA seeds as a published constant, and the event set the indexer needs~~ **done** | A TypeScript consumer derives the same addresses from the same constants |
+| 4 | ~~NAV written to the pool account on every mutation~~ **done** | Reading the account gives the figure the program acted on |
+| 5 | ~~Single-asset instruction set, mirroring the Soroban entry points~~ **done** | The two `lib.rs` files read side by side as the same sequence |
+| 6 | ~~SPL mint for shares, vault PDA, escrow authority~~ **done** | Localnet: deposit mints, withdraw burns, vault balances move |
+| 7 | ~~Localnet integration: the full arc, including the shortfall case~~ **done** | Escrow lands on zero with nothing outstanding, as on Stellar |
 | 8 | Locked pools, with the reserve-backed early exit | Same arc, per-position payouts |
 | 9 | Stable yield, queue last | The ring buffer under a compute-unit bound |
 | 10 | Devnet, and the same on-chain verification Stellar got | Shortfall case and emergency guard confirmed on chain |
