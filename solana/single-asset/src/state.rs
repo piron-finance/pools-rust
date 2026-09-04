@@ -18,6 +18,7 @@ pub const POSITION_SEED: &[u8] = b"position";
 /// Pool terms and running state. One account per pool, at
 /// `[POOL_SEED, pool_id.to_le_bytes()]`.
 #[account]
+#[derive(InitSpace)]
 pub struct Pool {
     pub pool_id: u64,
     pub authority: Pubkey,
@@ -58,20 +59,17 @@ pub struct Pool {
 }
 
 impl Pool {
-    /// Rent-exempt size. Anchor's 8-byte discriminator plus every field.
+    /// Rent-exempt size: Anchor's 8-byte discriminator plus every field.
+    ///
+    /// Derived rather than hand-counted. The hand-written version was 24 bytes short
+    /// within one change of being written — it said "eight running totals" when there
+    /// were ten — and an account sized short truncates on write rather than failing
+    /// loudly. `InitSpace` recomputes from the struct, so adding a field cannot silently
+    /// leave the size behind.
     ///
     /// Unlike Soroban there is no TTL and no keeper: fund this once at the rent-exempt
     /// minimum and it lives indefinitely.
-    pub const LEN: usize = 8
-        + 8                                 // pool_id
-        + 32 * 4                            // authority, asset_mint, vault, escrow
-        + 1 + 8 + 8 + 8 + 8 + 8             // instrument_type, face..target, epoch, maturity
-        + 1                                 // coupon_count
-        + 8 * MAX_COUPON_SCHEDULE           // coupon_dates
-        + 4 * MAX_COUPON_SCHEDULE           // coupon_rates
-        + 4 + 4 + 8 + 4                     // discount_rate, funding threshold, min investment, fee bps
-        + 1 + 8 * 8                         // status + eight running totals
-        + 1; // bump
+    pub const LEN: usize = 8 + Self::INIT_SPACE;
 
     /// Builds the core view of this pool.
     ///
@@ -128,6 +126,7 @@ impl Pool {
 /// idea; here the address is derived and the account must be created and rent-funded
 /// before first use.
 #[account]
+#[derive(InitSpace)]
 pub struct Position {
     pub pool: Pubkey,
     pub owner: Pubkey,
@@ -137,7 +136,24 @@ pub struct Position {
 }
 
 impl Position {
-    pub const LEN: usize = 8 + 32 + 32 + 8 + 8 + 1;
+    pub const LEN: usize = 8 + Self::INIT_SPACE;
+}
+
+/// Narrows a core amount back into the `u64` an SPL token and an account field hold.
+///
+/// The widening direction is free and litters this file as `x as i128`, which is exactly
+/// what makes `as u64` look reasonable on the way back. It is not: `as` truncates, so a
+/// figure that overflowed would be written to an account as a small positive number and
+/// every later read would believe it. Core works in `i128` precisely so intermediate
+/// products cannot wrap, and that guarantee is worth nothing if the boundary throws it away.
+///
+/// Negative is a distinct failure from too-large and stays distinct, because a negative
+/// amount means a calculation went wrong upstream rather than a pool got big.
+pub fn to_u64(value: piron_core::Amount) -> core::result::Result<u64, piron_core::Error> {
+    if value < 0 {
+        return Err(piron_core::Error::NegativeAmount);
+    }
+    u64::try_from(value).map_err(|_| piron_core::Error::Overflow)
 }
 
 /// Numeric values match the Solidity `PoolStatus` enum ordering, same as the Soroban
@@ -151,5 +167,124 @@ pub fn status_from_u8(value: u8) -> core_types::PoolStatus {
         4 => core_types::PoolStatus::Matured,
         5 => core_types::PoolStatus::Withdrawn,
         _ => core_types::PoolStatus::Emergency,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anchor_lang::prelude::borsh;
+
+    /// `LEN` has to match what a serialised account actually occupies, or `init` allocates
+    /// short and writes truncate. The hand-counted version was 24 bytes short within one
+    /// change of being written, which is the whole argument for deriving it.
+    #[test]
+    fn the_declared_size_matches_what_is_written() {
+        let pool = Pool {
+            pool_id: 1,
+            authority: Pubkey::new_unique(),
+            asset_mint: Pubkey::new_unique(),
+            vault: Pubkey::new_unique(),
+            escrow: Pubkey::new_unique(),
+            instrument_type: 0,
+            face_value: 0,
+            purchase_price: 0,
+            target_raise: 0,
+            epoch_end_time: 0,
+            maturity_date: 0,
+            coupon_count: 0,
+            coupon_dates: [0; MAX_COUPON_SCHEDULE],
+            coupon_rates: [0; MAX_COUPON_SCHEDULE],
+            discount_rate: 0,
+            minimum_funding_threshold: 0,
+            min_investment: 0,
+            withdrawal_fee_bps: 0,
+            status: 0,
+            total_raised: 0,
+            actual_invested: 0,
+            total_discount_earned: 0,
+            total_coupons_received: 0,
+            total_coupons_distributed: 0,
+            total_coupons_claimed: 0,
+            funds_withdrawn_by_spv: 0,
+            funds_returned_by_spv: 0,
+            total_fees_collected: 0,
+            shares_at_maturity: 0,
+            bump: 0,
+        };
+        // 8 for the discriminator, which try_to_vec does not include.
+        assert_eq!(Pool::LEN, 8 + borsh::to_vec(&pool).unwrap().len());
+
+        let position = Position {
+            pool: Pubkey::new_unique(),
+            owner: Pubkey::new_unique(),
+            deposit_time: 0,
+            coupons_claimed: 0,
+            bump: 0,
+        };
+        assert_eq!(Position::LEN, 8 + borsh::to_vec(&position).unwrap().len());
+    }
+
+    #[test]
+    fn narrowing_refuses_what_it_cannot_represent() {
+        assert_eq!(to_u64(0), Ok(0));
+        assert_eq!(to_u64(u64::MAX as i128), Ok(u64::MAX));
+
+        // One past what a u64 holds. `as u64` would wrap this to 0 and write it.
+        assert_eq!(
+            to_u64(u64::MAX as i128 + 1),
+            Err(piron_core::Error::Overflow)
+        );
+
+        // Negative is its own failure: it means a calculation went wrong upstream, not
+        // that a pool got large.
+        assert_eq!(to_u64(-1), Err(piron_core::Error::NegativeAmount));
+    }
+
+    /// The account holds the schedule as two fixed arrays; core holds a `CouponSchedule`.
+    #[test]
+    fn the_coupon_schedule_survives_the_round_trip() {
+        let mut pool = Pool {
+            pool_id: 1,
+            authority: Pubkey::new_unique(),
+            asset_mint: Pubkey::new_unique(),
+            vault: Pubkey::new_unique(),
+            escrow: Pubkey::new_unique(),
+            instrument_type: 1,
+            face_value: 1_000,
+            purchase_price: 950,
+            target_raise: 1_000,
+            epoch_end_time: 100,
+            maturity_date: 1_000,
+            coupon_count: 3,
+            coupon_dates: [0; MAX_COUPON_SCHEDULE],
+            coupon_rates: [0; MAX_COUPON_SCHEDULE],
+            discount_rate: 0,
+            minimum_funding_threshold: 8_000,
+            min_investment: 10,
+            withdrawal_fee_bps: 50,
+            status: 0,
+            total_raised: 0,
+            actual_invested: 0,
+            total_discount_earned: 0,
+            total_coupons_received: 0,
+            total_coupons_distributed: 0,
+            total_coupons_claimed: 0,
+            funds_withdrawn_by_spv: 0,
+            funds_returned_by_spv: 0,
+            total_fees_collected: 0,
+            shares_at_maturity: 0,
+            bump: 0,
+        };
+        pool.coupon_dates[..3].copy_from_slice(&[200, 400, 600]);
+        pool.coupon_rates[..3].copy_from_slice(&[100, 100, 100]);
+
+        let data = pool.to_core().unwrap();
+        assert_eq!(data.config.coupons.len(), 3);
+        assert_eq!(data.config.coupons.dates(), &[200, 400, 600]);
+        assert_eq!(data.config.coupons.rates(), &[100, 100, 100]);
+
+        // Entries past the count are ignored rather than read as zero-dated coupons.
+        assert_eq!(data.config.coupons.iter().count(), 3);
     }
 }
