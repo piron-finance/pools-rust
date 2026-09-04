@@ -16,8 +16,9 @@ members = [
     "soroban/pool-share",
 ]
 
-# Solana is excluded: it builds through `cargo-build-sbf`, which manages its own
-# toolchain, and its anchor-lang pin is not yet confirmed.
+# Solana is excluded: it builds through `cargo-build-sbf`, which manages its own toolchain.
+# Being outside the workspace means it cannot inherit [workspace.package], so its version,
+# edition and license are spelled out in its own manifest and have to be kept in step.
 exclude = ["solana/single-asset"]
 
 [workspace.package]

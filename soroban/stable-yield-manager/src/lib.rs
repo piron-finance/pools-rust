@@ -669,17 +669,13 @@ impl StableYieldManager {
         }
 
         let mut instruments = Self::instruments(&env);
-        let mut instrument = instruments.get(index).ok_or(Error::InstrumentNotFound)?;
+        let instrument = instruments.get(index).ok_or(Error::InstrumentNotFound)?;
         if !instrument.is_active {
             return Err(Error::InstrumentNotFound);
         }
 
         Self::escrow(&env)?.take(&caller, &proceeds);
-        instrument.is_active = false;
-        instruments.set(index, instrument.clone());
-        env.storage()
-            .instance()
-            .set(&DataKey::Instruments, &instruments);
+        Self::retire(&env, &mut instruments, index);
 
         InstrumentMatured {
             index,
@@ -694,13 +690,33 @@ impl StableYieldManager {
     pub fn close_instrument(env: Env, caller: Address, index: u32) -> Result<(), Error> {
         Self::require_operator(&env, &caller)?;
         let mut instruments = Self::instruments(&env);
-        let mut instrument = instruments.get(index).ok_or(Error::InstrumentNotFound)?;
-        instrument.is_active = false;
-        instruments.set(index, instrument);
+        if instruments.get(index).is_none() {
+            return Err(Error::InstrumentNotFound);
+        }
+        Self::retire(&env, &mut instruments, index);
+        Self::emit_nav(&env)
+    }
+
+    /// Drops a settled holding out of the book.
+    ///
+    /// Marking it inactive and leaving it in place would be simpler, but the purchase cap
+    /// counts entries rather than live ones: a pool that never closes would reach the cap
+    /// on its 33rd purchase ever and be unable to buy again, with every earlier instrument
+    /// long since settled. Iterating dead entries on every NAV read is the other cost.
+    ///
+    /// Swap-removal moves the last entry into the freed slot, so indices are not stable
+    /// across a retirement. That matches `_removeInstrument` in the Solidity.
+    fn retire(env: &Env, instruments: &mut Vec<StoredInstrument>, index: u32) {
+        let last = instruments.len() - 1;
+        if index != last {
+            if let Some(moved) = instruments.get(last) {
+                instruments.set(index, moved);
+            }
+        }
+        instruments.pop_back();
         env.storage()
             .instance()
-            .set(&DataKey::Instruments, &instruments);
-        Self::emit_nav(&env)
+            .set(&DataKey::Instruments, instruments);
     }
 
     pub fn instrument_count(env: Env) -> u32 {

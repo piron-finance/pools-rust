@@ -306,6 +306,7 @@ fn the_factory_builds_all_three_pool_types() {
         &pool_roles(&f),
         &f.asset,
         &1_000,
+        &None,
     );
     let stable = f.factory.create_stable_yield_pool(
         &f.admin,

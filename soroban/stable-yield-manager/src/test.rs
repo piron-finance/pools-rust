@@ -383,7 +383,9 @@ fn closing_an_instrument_takes_it_out_of_nav() {
     f.client.close_instrument(&f.admin, &index);
     f.client.return_capital(&f.spv, &550_000);
     assert_eq!(f.client.total_nav(), 1_050_000);
-    assert_eq!(f.client.instrument_count(), 1);
+    // The holding leaves the book rather than lingering as a dead entry: the purchase
+    // cap counts entries, and a pool that never closes would otherwise run out of slots.
+    assert_eq!(f.client.instrument_count(), 0);
 }
 
 #[test]
@@ -519,4 +521,50 @@ fn an_instrument_cannot_be_recorded_larger_than_the_capital_drawn() {
     );
     assert_eq!(f.client.in_flight(), 0);
     let _ = index;
+}
+
+#[test]
+fn a_rolling_pool_can_keep_buying_after_its_holdings_settle() {
+    // The purchase cap counts entries in the book, so a settled holding left in place
+    // would still occupy a slot. A pool that never closes would reach the cap on its
+    // 33rd purchase ever, with every earlier instrument long since matured.
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+
+    // Well past the 32-entry cap. Each holding is bought and settled at par, so the
+    // SPV's balance is not what is being tested here.
+    for _ in 0..40 {
+        f.client.deploy_capital(&f.spv, &100_000);
+        let index = f
+            .client
+            .add_instrument(&f.admin, &discounted(100_000, 100_000, START));
+        assert_eq!(f.client.instrument_count(), 1, "the book holds one at a time");
+        f.env.ledger().set_timestamp(START + YEAR);
+        f.client.mature_instrument(&f.spv, &index, &100_000);
+        assert_eq!(f.client.instrument_count(), 0, "a settled holding leaves the book");
+        f.env.ledger().set_timestamp(START);
+    }
+}
+
+#[test]
+fn retiring_a_holding_keeps_the_others_valued() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_500_000);
+    f.client.deploy_capital(&f.spv, &300_000);
+
+    let a = f.client.add_instrument(&f.admin, &discounted(100_000, 100_000, START));
+    let _b = f.client.add_instrument(&f.admin, &discounted(100_000, 100_000, START));
+    let _c = f.client.add_instrument(&f.admin, &discounted(100_000, 100_000, START));
+    assert_eq!(f.client.instrument_count(), 3);
+
+    let nav_before = f.client.total_nav();
+
+    // Retiring the first swap-removes the last into its slot. NAV must not move: the
+    // holding's marked value becomes escrow cash.
+    f.env.ledger().set_timestamp(START + YEAR);
+    f.client.mature_instrument(&f.spv, &a, &100_000);
+    assert_eq!(f.client.instrument_count(), 2);
+
+    // The two survivors are both still marked, at face now that they are past maturity.
+    assert_eq!(f.client.total_nav(), nav_before);
 }
