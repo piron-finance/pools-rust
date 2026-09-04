@@ -45,7 +45,7 @@ pub mod piron_single_asset {
     /// Records a deposit made during the funding window.
     pub fn record_deposit(ctx: Context<RecordDeposit>, assets: u64) -> Result<()> {
         let now = Clock::get()?.unix_timestamp.max(0) as u64;
-        let data = ctx.accounts.pool.to_core();
+        let data = ctx.accounts.pool.to_core().map_err(map_err)?;
 
         validate::validate_deposit(&data, assets as i128, now).map_err(map_err)?;
 
@@ -74,7 +74,7 @@ pub mod piron_single_asset {
 
     /// Records a coupon received from the SPV.
     pub fn record_coupon(ctx: Context<RecordCoupon>, amount: u64) -> Result<()> {
-        let data = ctx.accounts.pool.to_core();
+        let data = ctx.accounts.pool.to_core().map_err(map_err)?;
         validate::validate_coupon_payment(&data, amount as i128).map_err(map_err)?;
 
         let pool = &mut ctx.accounts.pool;
@@ -95,7 +95,7 @@ pub mod piron_single_asset {
     pub fn claim_coupon(ctx: Context<ClaimCoupon>, user_shares: u64, total_shares: u64) -> Result<u64> {
         // TODO(vault): read shares from the vault token account rather than trusting
         // arguments. Same shortcut, same TODO, as the Soroban scaffold.
-        let data = ctx.accounts.pool.to_core();
+        let data = ctx.accounts.pool.to_core().map_err(map_err)?;
         let position = &ctx.accounts.position;
 
         let claim = calc::claim_coupon(

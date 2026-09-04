@@ -51,6 +51,8 @@ pub struct Pool {
     pub funds_withdrawn_by_spv: u64,
     pub funds_returned_by_spv: u64,
     pub total_fees_collected: u64,
+    /// Share supply frozen at settlement. Redemption divides by this, not live supply.
+    pub shares_at_maturity: u64,
 
     pub bump: u8,
 }
@@ -75,16 +77,18 @@ impl Pool {
     ///
     /// Token amounts are `u64` on Solana and `i128` in core. Widening is always safe;
     /// the narrowing direction is checked at the point of return.
-    pub fn to_core(&self) -> core_types::PoolData {
-        let count = self.coupon_count as usize;
-        let mut coupon_dates = alloc::vec::Vec::with_capacity(count);
-        let mut coupon_rates = alloc::vec::Vec::with_capacity(count);
+    pub fn to_core(&self) -> core::result::Result<core_types::PoolData, piron_core::Error> {
+        // The account stores the schedule as two parallel fixed arrays, because an account
+        // is sized once at creation and cannot hold a growable Vec. `CouponSchedule` is the
+        // same shape, so this rebuilds rather than converts.
+        let count = (self.coupon_count as usize).min(MAX_COUPON_SCHEDULE);
+        let mut dates = [0u64; MAX_COUPON_SCHEDULE];
         for i in 0..count {
-            coupon_dates.push(self.coupon_dates[i].max(0) as u64);
-            coupon_rates.push(self.coupon_rates[i]);
+            dates[i] = self.coupon_dates[i].max(0) as u64;
         }
+        let coupons = piron_core::schedule::CouponSchedule::from_parts(&dates[..count], &self.coupon_rates[..count])?;
 
-        core_types::PoolData {
+        Ok(core_types::PoolData {
             config: core_types::PoolConfig {
                 instrument_type: if self.instrument_type == 0 {
                     core_types::InstrumentType::Discounted
@@ -96,8 +100,7 @@ impl Pool {
                 target_raise: self.target_raise as i128,
                 epoch_end_time: self.epoch_end_time.max(0) as u64,
                 maturity_date: self.maturity_date.max(0) as u64,
-                coupon_dates,
-                coupon_rates,
+                coupons,
                 discount_rate: self.discount_rate,
                 minimum_funding_threshold: self.minimum_funding_threshold,
                 min_investment: self.min_investment as i128,
@@ -113,7 +116,8 @@ impl Pool {
             funds_withdrawn_by_spv: self.funds_withdrawn_by_spv as i128,
             funds_returned_by_spv: self.funds_returned_by_spv as i128,
             total_fees_collected: self.total_fees_collected as i128,
-        }
+            shares_at_maturity: self.shares_at_maturity as i128,
+        })
     }
 }
 

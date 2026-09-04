@@ -65,13 +65,18 @@ Redeemed positions should be closed and their rent returned to the holder. Ancho
 constraint does this, but only if it is on the account — forgetting it means every position
 ever opened is a permanent lamport cost to somebody.
 
-### 6. Toolchain, from zero
+### 6. Toolchain, from zero — settled
 
-Nothing is installed: no `anchor`, no `solana`, no `cargo-build-sbf`. The Anchor version in
-`Cargo.toml` is `0.31` behind a `TODO(pin)` and unverified. The crate is deliberately outside
-the workspace because SBF brings its own toolchain.
+Solana CLI 3.1.10, `cargo-build-sbf` 3.1.10, Anchor 1.1.2. The scaffold's `TODO(pin)` guessed
+`0.31`; Anchor has since cut a 1.0, so the guess was a major version out and would have
+failed at the first build.
 
-Budget real time for this. It is the least interesting failure mode and the most likely.
+Two things the guess also hid. The crate sits outside the workspace, so it cannot inherit
+`[workspace.package]` — version, edition and license are spelled out in its own manifest and
+have to be kept in step. And `init_if_needed` is feature-gated: a position account is created
+on a holder's first deposit, and Anchor refuses the pattern until you acknowledge the
+re-initialisation risk. It is safe here because the position is a PDA seeded on (pool, owner),
+so a second init resolves to the same address.
 
 ### What is not a risk
 
@@ -83,20 +88,82 @@ section describes a road not taken on either chain. Skip it, and correct the doc
 This removes the largest Solana-specific unknown: writing and auditing our own transfer
 hook program.
 
+## What the product actually needs from a chain
+
+Read out of `pironBackend` and the three apps, because the off-chain system is what the
+program has to serve, and two of its assumptions do not survive the move.
+
+| | Count | Shape on EVM |
+|---|---|---|
+| Distinct on-chain reads | 58 | `calculatePoolNAV()`, `getNAVPerShare()`, `getPoolTiers()` |
+| Unsigned transactions built server-side | 43 | backend returns `{to, data}`, a wallet signs |
+| Events indexed | 2 | `Deposit`, `PoolWithdrawal`, filtered by topic and pool address |
+| Source of truth for the UI | Postgres | `PoolPosition` mirrored from events; the chain is read only for live NAV |
+
+That last row is the one to hold on to. The product reads Postgres, not the chain. The chain
+settles and emits; anything the indexer cannot see, the product cannot show.
+
+### There are no view functions
+
+All 58 reads become fetch-account-and-deserialize. `calculatePoolNAV` cannot be a call, so
+either the client recomputes NAV from the pool and instrument accounts, or the program
+writes NAV to an account on every mutation.
+
+Write it. A client that recomputes will eventually disagree with what the program believed
+at the moment it moved money, and that disagreement surfaces as a support ticket about a
+share price. Soroban already emits NAV on every mutation for the same reason.
+
+### There are no indexed logs
+
+`getLogs({topics, address})` has no equivalent. Anchor's `emit!` writes base64 into
+unstructured program logs, found by walking `getSignaturesForAddress` and parsing
+transactions.
+
+So `IndexerState.lastBlock` becomes a **signature cursor**, not a slot — slots skip, and
+signatures are the only stable pagination. This is the largest change to off-chain code and
+the reason event design comes before the instruction set rather than after it.
+
+### Every transaction carries its own account list
+
+`{to, data}` is self-contained. A Solana instruction needs every account it touches, each
+flagged signer or writable, plus a blockhash and a compute budget. The 43 builders get
+materially heavier, and the PDA seed scheme becomes a backend concern.
+
+Publish the seeds as a shared constant. Deriving them by hand in Rust and again in
+TypeScript is a class of bug that only shows up against a real cluster.
+
+### The approve-then-call two-step collapses
+
+`requiresApproval` exists in three SPV flows because ERC20 needs an allowance first. On
+Solana the owner signs one transaction that moves the tokens. Design for the single
+transaction rather than porting the two-step.
+
+### Shares stay a plain SPL mint
+
+The app reads the asset balance directly and takes shares from the backend mirror, and
+nothing in the UI transfers shares — so a program-internal balance would work. A plain mint
+with the pool PDA as authority costs nothing, gives wallet visibility and composability, and
+`transferPosition` on locked pools shows transferability is already in the model.
+
+---
+
 ## Sequence
 
-Each step ends in something runnable. No step depends on a decision from a later one.
+Each step ends in something runnable. Event and seed design come before the instruction set
+because both are hard to change once instructions depend on them.
 
 | | Step | Done when |
 |---|---|---|
-| 1 | Toolchain: install Solana CLI, Anchor, `cargo-build-sbf`; pin the real Anchor version | `cargo build-sbf` succeeds on the existing scaffold |
-| 2 | The checked `i128`↔`u64` boundary, plus `Pool::LEN` and `Position::LEN` verified against `size_of` | A `#[test]` asserts both sizes and a conversion test covers overflow |
-| 3 | Single-asset instruction set, mirroring the Soroban entry points one for one | The two `lib.rs` files read side by side as the same sequence |
-| 4 | SPL mint for shares, vault PDA, escrow authority | Localnet: deposit mints, withdraw burns, vault balances move |
-| 5 | Localnet integration: the full arc, including the shortfall case | Escrow lands on zero with nothing outstanding, as on Stellar |
-| 6 | Locked pools | Same arc, per-position payouts |
-| 7 | Stable yield, queue last | The ring buffer under a CU bound |
-| 8 | Devnet, then the same on-chain verification Stellar got | Shortfall case and emergency guard confirmed on chain |
+| 1 | ~~Toolchain: Solana CLI, Anchor, `cargo-build-sbf`; pin the real Anchor version~~ **done** | `cargo build-sbf` succeeds on the existing scaffold |
+| 2 | The checked `i128`↔`u64` boundary, plus `Pool::LEN` and `Position::LEN` verified against `size_of` | A test asserts both sizes and a conversion test covers overflow |
+| 3 | PDA seeds as a published constant, and the event set the indexer needs | A TypeScript consumer derives the same addresses from the same constants |
+| 4 | NAV written to the pool account on every mutation | Reading the account gives the figure the program acted on |
+| 5 | Single-asset instruction set, mirroring the Soroban entry points | The two `lib.rs` files read side by side as the same sequence |
+| 6 | SPL mint for shares, vault PDA, escrow authority | Localnet: deposit mints, withdraw burns, vault balances move |
+| 7 | Localnet integration: the full arc, including the shortfall case | Escrow lands on zero with nothing outstanding, as on Stellar |
+| 8 | Locked pools, with the reserve-backed early exit | Same arc, per-position payouts |
+| 9 | Stable yield, queue last | The ring buffer under a compute-unit bound |
+| 10 | Devnet, and the same on-chain verification Stellar got | Shortfall case and emergency guard confirmed on chain |
 
 ## Decisions taken
 
