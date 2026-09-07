@@ -1,0 +1,53 @@
+[package]
+name = "piron-stable-yield-solana"
+description = "Solana binding for Piron Stable Yield pools. NAV shares, instruments, a ring-buffer withdrawal queue."
+# Concrete rather than inherited: the crate sits outside the workspace, so there is no
+# root to inherit from. Keep these in step with [workspace.package] in the root manifest.
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "piron_stable_yield_solana"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+piron-core = { path = "../../crates/piron-core" }
+# Anchor 1.x, not the 0.31 the scaffold guessed at: Anchor cut a 1.0 release and the two
+# lines differ enough that the guess would have failed at the first build.
+#
+# Excluded from the workspace on purpose. Solana builds through `cargo-build-sbf`, which
+# brings its own toolchain rather than honouring rust-toolchain.toml.
+# init-if-needed: the position account is created on a holder's first deposit and reused
+# after. Anchor gates the feature because a careless init_if_needed is a re-initialisation
+# attack; here the account is a PDA seeded on (pool, owner), so a second init resolves to
+# the same address and the handler treats an existing position as existing.
+anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
+# Plain SPL Token, not Token-2022. The 2022 extensions — transfer hook, permanent
+# delegate, default-frozen accounts — are the ERC-3643 analogue, and KYC lives off-chain on
+# every chain Piron runs on. The hook would also be a program we write and audit ourselves.
+anchor-spl = "1.1.2"
+# Required by zero-copy layouts: the derive emits Pod/Zeroable impls.
+bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
+
+[dev-dependencies]
+# An in-process SVM rather than a validator subprocess: the arc runs in `cargo test`
+# alongside everything else, and time can be moved to a maturity date without waiting.
+# Pinned to what litesvm itself resolves. Two Solana crate majors in one test binary
+# produce type mismatches between identically-named structs, which read as nonsense errors.
+litesvm = "0.16"
+bytemuck = "1"
+solana-keypair = "3.1"
+solana-pubkey = "3"
+solana-signer = "3"
+solana-instruction = "3"
+solana-system-interface = "2"
+solana-transaction = "4"

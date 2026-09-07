@@ -43,13 +43,20 @@ freely; a Solana account is sized at creation and reallocs 10KB at a time.
 
 Options, in preference order:
 
-1. **A ring buffer of fixed capacity in the pool account**, with head/tail cursors — the
-   same shape `piron-core`'s queue already uses. Capacity becomes a config decision.
-2. One PDA per withdrawal request, keyed by index. Unbounded, but processing a batch means
-   passing N accounts and the transaction account limit binds.
+Settled by building it, and the answer is narrower than either option looked.
 
-`piron-core::stable_yield::queue` is already cursor-based, which was the right call. Confirm
-it can drive option 1 unchanged before writing any account layout.
+A ring buffer of 256 needs 22,600 bytes. A CPI can allocate at most 10,240 — the runtime
+says so in as many words, `Account data size realloc limited to 10240 in inner
+instructions` — and growing it by realloc afterwards does not help, because zero-copy's
+`load_init` requires the account already be its full size. A PDA cannot sign a top-level
+create, which has no such cap.
+
+So the queue is a **client-created keypair account**, owned by the program, whose address
+the pool records. It is the one place the design bends to the runtime: anything deriving
+the queue reads `pool.queue` rather than computing a seed.
+
+Zero-copy is not optional here either. Anchor's ordinary `Account<T>` deserialises onto a
+4KB stack frame, and the queue overran it by 18,544 bytes.
 
 ### 4. Compute units
 
@@ -155,14 +162,14 @@ because both are hard to change once instructions depend on them.
 | | Step | Done when |
 |---|---|---|
 | 1 | ~~Toolchain: Solana CLI, Anchor, `cargo-build-sbf`; pin the real Anchor version~~ **done** | `cargo build-sbf` succeeds on the existing scaffold |
-| 2 | The checked `i128`↔`u64` boundary, plus `Pool::LEN` and `Position::LEN` verified against `size_of` | A test asserts both sizes and a conversion test covers overflow |
-| 3 | PDA seeds as a published constant, and the event set the indexer needs | A TypeScript consumer derives the same addresses from the same constants |
-| 4 | NAV written to the pool account on every mutation | Reading the account gives the figure the program acted on |
-| 5 | Single-asset instruction set, mirroring the Soroban entry points | The two `lib.rs` files read side by side as the same sequence |
-| 6 | SPL mint for shares, vault PDA, escrow authority | Localnet: deposit mints, withdraw burns, vault balances move |
-| 7 | Localnet integration: the full arc, including the shortfall case | Escrow lands on zero with nothing outstanding, as on Stellar |
-| 8 | Locked pools, with the reserve-backed early exit | Same arc, per-position payouts |
-| 9 | Stable yield, queue last | The ring buffer under a compute-unit bound |
+| 2 | ~~The checked `i128`↔`u64` boundary, plus `Pool::LEN` and `Position::LEN` verified against `size_of`~~ **done** | A test asserts both sizes and a conversion test covers overflow |
+| 3 | ~~PDA seeds as a published constant, and the event set the indexer needs~~ **done** | A TypeScript consumer derives the same addresses from the same constants |
+| 4 | ~~NAV written to the pool account on every mutation~~ **done** | Reading the account gives the figure the program acted on |
+| 5 | ~~Single-asset instruction set, mirroring the Soroban entry points~~ **done** | The two `lib.rs` files read side by side as the same sequence |
+| 6 | ~~SPL mint for shares, vault PDA, escrow authority~~ **done** | Localnet: deposit mints, withdraw burns, vault balances move |
+| 7 | ~~Localnet integration: the full arc, including the shortfall case~~ **done** | Escrow lands on zero with nothing outstanding, as on Stellar |
+| 8 | ~~Locked pools, with the reserve-backed early exit~~ **done** | Same arc, per-position payouts |
+| 9 | ~~Stable yield, queue last~~ **done** | The ring buffer under a compute-unit bound |
 | 10 | Devnet, and the same on-chain verification Stellar got | Shortfall case and emergency guard confirmed on chain |
 
 ## Decisions taken

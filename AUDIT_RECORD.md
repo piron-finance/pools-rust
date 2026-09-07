@@ -61,6 +61,62 @@ Soroban reached the same model independently and never carried the lifecycle.
 - Withdrawals were indexed off `WithdrawalFeeCollected`, which only fires on the matured
   path, silently dropping funding-phase and emergency exits.
 
+## Found while writing the scenario suites
+
+The withdrawal queue was the substantial one. Three defects, one cause: both Rust runtimes
+burned a leaver's shares when the queue *reached* them rather than when they *asked*, and
+re-priced the request at service time. The Solidity reference does neither.
+
+- **The queue could be bricked permanently.** Shares are a transferable token. A holder who
+  queued and then moved their shares on left a request whose burn must fail; the burn sat
+  inside the batch, so the whole transaction reverted and the head could never advance past
+  them. Every request behind them was stranded for good. Shares now burn when the request is
+  made, which is also what the Solidity does.
+- **The same shares could be queued twice**, for the same reason.
+- **Re-pricing at service time paid the leaver out of everyone else.** With shares already
+  gone from the supply, a fresh quote divides the pool by a denominator those shares had
+  left — so the longer the queue took to reach a holder, the more they were paid. Each
+  request is now paid the quote it was struck with.
+
+Two consequences had to follow for the arithmetic to hold. NAV is now net of what the pool
+already owes queued leavers, so queueing an exit does not move the price for anyone else —
+asserted directly, on both chains. And the pending total carries the *gross* quote, because
+the fee leaves the vault too; reserving only the net let each queued exit nudge the price up
+for everyone behind it.
+
+Also on the queue: cash standing against queued exits is no longer the SPV's to draw, and
+the reserve floor no longer applies to serving the queue — the floor exists so holders can
+leave, and withholding it from the queue it is held for is circular.
+
+Found in the Solana bindings specifically, where the surface had drifted from Soroban:
+
+- **`add_instrument` and `write_off_instrument` took any signer.** Anyone could record a
+  holding against capital the real SPV had drawn — clearing its outstanding balance and
+  taking the attribution — or write a holding out of NAV. Both now check the role, and every
+  role check in that program reports 701, the number Soroban reports, rather than a generic
+  signature error the backend cannot map.
+- **A locked pool's upfront interest was never paid out.** Choosing "upfront" got the holder
+  nothing on day one and principal alone at maturity: the interest simply vanished.
+- **The locked pool's deposit metrics were mis-mapped** — interest paid upfront was booked
+  as interest committed, and interest still owed was booked as invested capital.
+- **`process_withdrawals` takes payee accounts from the operator**, so an owner check on
+  each one is the only thing between an operator and redirecting a holder's money. Added.
+- The holding period was configurable but unenforced on Solana, there being no per-holder
+  clock to enforce it against. One added.
+- A tier could be opened but never closed, and the pool itself had no pause. Both added,
+  with redemptions and exits deliberately left open — closing a pool must never trap money
+  already in it.
+
+One thing the suites disproved: a doc comment claimed a locked pool holds back what the
+nearest maturities need. It does not, on either chain, and deliberately — holding back
+principal plus promised interest would leave the pool nothing to invest. The comment was
+stale; the reserve is what covers an exit that lands before the SPV returns.
+
+The test harnesses now refuse to run against a stale build. litesvm executes the compiled
+artefact rather than the crate `cargo test` just built, so a source change with no
+`cargo-build-sbf` behind it silently tested the old program and passed. That happened once
+here and the guard exists because of it.
+
 ## Open
 
 **Mid-deal SPV default.** `emergencyExit` is now guarded to the window where the escrow is

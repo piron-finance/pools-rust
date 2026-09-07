@@ -329,9 +329,22 @@ impl StableYieldManager {
         let reserves = Self::escrow(&env)?.balance();
         // Capital in flight counts too: it left the escrow but still belongs to the pool.
         let in_flight = Self::deployed_outstanding(&env);
+        // Queued exits burned their shares when they asked to leave, so the cash owed to
+        // them is a liability against a supply that no longer counts them. Leaving it in
+        // would price every remaining share up by the size of the queue.
+        let owed = Self::queue_pending(&env);
         Ok(nav::pool_nav(gross, reserves)?
             .checked_add(in_flight)
-            .ok_or(Error::Overflow)?)
+            .ok_or(Error::Overflow)?
+            .saturating_sub(owed))
+    }
+
+    /// Cash already owed to holders who have queued to leave.
+    pub fn queue_pending(env: &Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::QueuePending)
+            .unwrap_or(0)
     }
 
     /// Price of one share, scaled by 1e18.
@@ -402,6 +415,12 @@ impl StableYieldManager {
         let price = Self::nav_per_share(env.clone())?;
         let quote = queue::quote_withdrawal(shares, price, config.withdrawal_fee_bps)?;
 
+        // Burned now, not when the queue reaches them. Leaving the shares outstanding
+        // lets the owner move them on, and the burn at processing time then fails against
+        // an emptied balance — which stops the head advancing and strands every request
+        // behind it. It would also let the same shares be queued twice.
+        Self::share(&env)?.burn(&owner, &shares);
+
         let index: u64 = env.storage().instance().get(&DataKey::QueueTail).unwrap_or(0);
         write_request(
             &env,
@@ -428,7 +447,7 @@ impl StableYieldManager {
             .unwrap_or(0);
         env.storage()
             .instance()
-            .set(&DataKey::QueuePending, &(pending + quote.net_value));
+            .set(&DataKey::QueuePending, &(pending + quote.gross_value));
 
         WithdrawalRequested {
             owner,
@@ -451,14 +470,12 @@ impl StableYieldManager {
     ) -> Result<u32, Error> {
         Self::require_operator(&env, &caller)?;
 
-        let config = Self::config(&env)?;
         let head: u64 = env.storage().instance().get(&DataKey::QueueHead).unwrap_or(0);
         let tail: u64 = env.storage().instance().get(&DataKey::QueueTail).unwrap_or(0);
 
-        let total_nav = Self::total_nav(env.clone())?;
-        let reserves = Self::escrow(&env)?.balance();
-        let available = validate::deployable_amount(reserves, total_nav, &config.reserve())?;
-        let price = nav::nav_per_share(total_nav, Self::total_shares(&env))?;
+        // The queue draws on the whole balance. The reserve floor exists so holders can
+        // leave; withholding it from the queue would be circular.
+        let available = Self::escrow(&env)?.balance();
 
         // Load only the slice this batch may touch, so the footprint is known up front.
         let slice = piron_core::stable_yield::types::WithdrawalQueue {
@@ -494,14 +511,7 @@ impl StableYieldManager {
             }
         }
 
-        let outcome = queue::process_batch(
-            &slice,
-            &requests_buf[..loaded],
-            available,
-            price,
-            config.withdrawal_fee_bps,
-            take,
-        )?;
+        let outcome = queue::process_batch(&slice, &requests_buf[..loaded], available, take)?;
 
         // Pay out and settle each request the batch covered.
         let escrow = Self::escrow(&env)?;
@@ -511,14 +521,10 @@ impl StableYieldManager {
                 if stored.processed {
                     continue;
                 }
-                let quote =
-                    queue::quote_withdrawal(stored.shares, price, config.withdrawal_fee_bps)?;
-
-                Self::share(&env)?.burn(&stored.owner, &stored.shares);
-
-                escrow.release(&stored.owner, &quote.net_value);
-                if quote.fee > 0 {
-                    escrow.release(&Self::roles(&env)?.treasury, &quote.fee);
+                // Shares are already burned; what is left is the cash owed.
+                escrow.release(&stored.owner, &stored.estimated_value);
+                if stored.fee_amount > 0 {
+                    escrow.release(&Self::roles(&env)?.treasury, &stored.fee_amount);
                 }
 
                 stored.processed = true;
@@ -538,7 +544,7 @@ impl StableYieldManager {
             .unwrap_or(0);
         env.storage().instance().set(
             &DataKey::QueuePending,
-            &(pending - outcome.total_paid).max(0),
+            &(pending - outcome.total_paid - outcome.total_fees).max(0),
         );
 
         WithdrawalsProcessed {
@@ -729,7 +735,9 @@ impl StableYieldManager {
 
         let config = Self::config(&env)?;
         let total_nav = Self::total_nav(env.clone())?;
-        let reserves = Self::escrow(&env)?.balance();
+        // Cash standing against queued exits is spoken for; deploying it would leave the
+        // pool unable to pay requests it has already priced and burned shares for.
+        let reserves = (Self::escrow(&env)?.balance() - Self::queue_pending(&env)).max(0);
         validate::validate_deployment(amount, reserves, total_nav, &config.reserve())?;
 
         Self::escrow(&env)?.release(&caller, &amount);
@@ -754,7 +762,7 @@ impl StableYieldManager {
     pub fn deployable(env: Env) -> Result<i128, Error> {
         let config = Self::config(&env)?;
         let total_nav = Self::total_nav(env.clone())?;
-        let reserves = Self::escrow(&env)?.balance();
+        let reserves = (Self::escrow(&env)?.balance() - Self::queue_pending(&env)).max(0);
         Ok(validate::deployable_amount(
             reserves,
             total_nav,
