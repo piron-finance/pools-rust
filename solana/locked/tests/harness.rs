@@ -149,6 +149,7 @@ pub struct Pool {
 
 pub fn open_pool(svm: &mut LiteSVM, reserve_funding: u64) -> Pool {
     let program = piron_locked_solana::ID;
+    assert_fresh("target/deploy/piron_locked_solana.so");
     svm.add_program_from_file(program, "target/deploy/piron_locked_solana.so")
         .expect("run `cargo build-sbf` first");
 
@@ -254,4 +255,94 @@ pub fn warp_seconds(svm: &mut LiteSVM, seconds: i64) {
     let mut clock = svm.get_sysvar::<anchor_lang::prelude::Clock>();
     clock.unix_timestamp += seconds;
     svm.set_sysvar(&clock);
+}
+
+/// litesvm runs the compiled artefact, not the crate `cargo test` just built, so a source
+/// change with no `cargo-build-sbf` behind it would test the old program and pass. Refuse
+/// to run rather than report a green suite for code that is not under test.
+pub fn assert_fresh(so: &str) {
+    use std::{fs, path::Path, time::SystemTime};
+    let built = fs::metadata(so)
+        .unwrap_or_else(|_| panic!("{so} is missing - run `cargo-build-sbf` first"))
+        .modified()
+        .unwrap();
+    let mut newest = SystemTime::UNIX_EPOCH;
+    let mut newest_path = String::new();
+    let mut stack = vec![Path::new("src").to_path_buf(), Path::new("../../crates/piron-core/src").to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                if let Ok(t) = entry.metadata().and_then(|m| m.modified()) {
+                    if t > newest {
+                        newest = t;
+                        newest_path = path.display().to_string();
+                    }
+                }
+            }
+        }
+    }
+    assert!(built >= newest, "{newest_path} is newer than {so} - run `cargo-build-sbf` first");
+}
+
+pub fn roll_over(svm: &mut LiteSVM, p: &Pool, who: &Keypair, acc: Pubkey, position_id: u64,
+                 new_id: u64, tier_index: u32, payment_choice: u8) -> Result<(), String> {
+    let (position, _) = seeds::position(&p.pool, position_id);
+    let (new_position, _) = seeds::position(&p.pool, new_id);
+    let r = piron_locked_solana::accounts::RollOver {
+        pool: p.pool, position, new_position, vault: p.vault, holder_asset: acc,
+        holder: who.pubkey(), owner: who.pubkey(), token_program: spl_token::ID,
+        system_program: solana_pubkey::pubkey!("11111111111111111111111111111111"),
+    };
+    send(svm, who, &[], ix(p.program, r.to_account_metas(None),
+        piron_locked_solana::instruction::RollOver { tier_index, payment_choice }.data()))
+}
+
+pub fn load_position(svm: &LiteSVM, p: &Pool, position_id: u64) -> piron_locked_solana::state::LockedPosition {
+    let (position, _) = seeds::position(&p.pool, position_id);
+    let raw = svm.get_account(&position).unwrap();
+    anchor_lang::AccountDeserialize::try_deserialize(&mut &raw.data[..]).unwrap()
+}
+
+pub fn deploy_to_spv(svm: &mut LiteSVM, p: &Pool, caller: &Keypair, amount: u64) -> Result<(), String> {
+    let d = piron_locked_solana::accounts::SpvMovesFunds {
+        pool: p.pool, vault: p.vault, spv_asset: p.spv_asset,
+        spv: caller.pubkey(), token_program: spl_token::ID,
+    };
+    send(svm, caller, &[], ix(p.program, d.to_account_metas(None),
+        piron_locked_solana::instruction::DeployToSpv { amount }.data()))
+}
+
+pub fn return_from_spv(svm: &mut LiteSVM, p: &Pool, caller: &Keypair, amount: u64) -> Result<(), String> {
+    let d = piron_locked_solana::accounts::SpvMovesFunds {
+        pool: p.pool, vault: p.vault, spv_asset: p.spv_asset,
+        spv: caller.pubkey(), token_program: spl_token::ID,
+    };
+    send(svm, caller, &[], ix(p.program, d.to_account_metas(None),
+        piron_locked_solana::instruction::ReturnFromSpv { amount }.data()))
+}
+
+pub fn settle_debt(svm: &mut LiteSVM, p: &Pool, caller: &Keypair, amount: u64) -> Result<(), String> {
+    let d = piron_locked_solana::accounts::SettleDebt {
+        pool: p.pool, spv_asset: p.spv_asset, reserve_asset: p.reserve_asset,
+        spv: caller.pubkey(), token_program: spl_token::ID,
+    };
+    send(svm, caller, &[], ix(p.program, d.to_account_metas(None),
+        piron_locked_solana::instruction::SettleDebt { amount }.data()))
+}
+
+pub fn set_tier_active(svm: &mut LiteSVM, p: &Pool, caller: &Keypair, tier_index: u32, is_active: bool)
+    -> Result<(), String> {
+    let auth = piron_locked_solana::accounts::Authority { pool: p.pool, authority: caller.pubkey() };
+    send(svm, caller, &[], ix(p.program, auth.to_account_metas(None),
+        piron_locked_solana::instruction::SetTierActive { tier_index, is_active }.data()))
+}
+
+pub fn set_open(svm: &mut LiteSVM, p: &Pool, caller: &Keypair, is_open: bool) -> Result<(), String> {
+    let auth = piron_locked_solana::accounts::Authority { pool: p.pool, authority: caller.pubkey() };
+    send(svm, caller, &[], ix(p.program, auth.to_account_metas(None),
+        piron_locked_solana::instruction::SetOpen { is_open }.data()))
 }

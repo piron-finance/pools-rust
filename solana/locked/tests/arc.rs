@@ -6,6 +6,9 @@
 //! 500,000,000 position needed 500,000,190 and reverted by 190 stroops. Here the reserve
 //! lends the difference and the pool records what it owes.
 
+#[allow(dead_code)]
+mod harness;
+
 use anchor_lang::{system_program, InstructionData, ToAccountMetas};
 use anchor_spl::token::spl_token;
 use litesvm::LiteSVM;
@@ -139,6 +142,7 @@ const PRINCIPAL: u64 = 500_000_000;
 fn an_early_exit_is_covered_by_the_reserve() {
     let mut svm = LiteSVM::new();
     let program = piron_locked_solana::ID;
+    harness::assert_fresh("target/deploy/piron_locked_solana.so");
     svm.add_program_from_file(program, "target/deploy/piron_locked_solana.so")
         .expect("run `cargo build-sbf` first");
 

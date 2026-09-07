@@ -157,6 +157,7 @@ pub const POOL_ID: u64 = 1;
 /// vary the one thing it is about.
 pub fn open_pool(svm: &mut LiteSVM, tweak: impl FnOnce(&mut PoolTerms)) -> Pool {
     let program = piron_single_asset_solana::ID;
+    assert_fresh("target/deploy/piron_single_asset_solana.so");
     svm.add_program_from_file(program, "target/deploy/piron_single_asset_solana.so")
         .expect("run `cargo build-sbf` first");
 
@@ -253,4 +254,101 @@ pub fn warp(svm: &mut LiteSVM, to: i64) {
 
 pub fn ix(program: Pubkey, accounts: Vec<solana_instruction::AccountMeta>, data: Vec<u8>) -> Instruction {
     Instruction { program_id: program, accounts, data }
+}
+
+/// litesvm runs the compiled artefact, not the crate `cargo test` just built, so a source
+/// change with no `cargo-build-sbf` behind it would test the old program and pass. Refuse
+/// to run rather than report a green suite for code that is not under test.
+pub fn assert_fresh(so: &str) {
+    use std::{fs, path::Path, time::SystemTime};
+    let built = fs::metadata(so)
+        .unwrap_or_else(|_| panic!("{so} is missing - run `cargo-build-sbf` first"))
+        .modified()
+        .unwrap();
+    let mut newest = SystemTime::UNIX_EPOCH;
+    let mut newest_path = String::new();
+    let mut stack = vec![Path::new("src").to_path_buf(), Path::new("../../crates/piron-core/src").to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                if let Ok(t) = entry.metadata().and_then(|m| m.modified()) {
+                    if t > newest {
+                        newest = t;
+                        newest_path = path.display().to_string();
+                    }
+                }
+            }
+        }
+    }
+    assert!(built >= newest, "{newest_path} is newer than {so} - run `cargo-build-sbf` first");
+}
+
+pub fn mark_filled(svm: &mut LiteSVM, p: &Pool) -> Result<(), String> {
+    let a = piron_single_asset_solana::accounts::PoolOnly { pool: p.pool };
+    send(svm, &p.authority, &[], ix(p.program, a.to_account_metas(None),
+        piron_single_asset_solana::instruction::MarkFilled {}.data()))
+}
+
+pub fn withdraw_for_investment(svm: &mut LiteSVM, p: &Pool, caller: &Keypair, amount: u64)
+    -> Result<(), String> {
+    let w = piron_single_asset_solana::accounts::SpvMovesFunds {
+        pool: p.pool, vault: p.vault, spv_asset: p.spv_asset,
+        spv: caller.pubkey(), token_program: spl_token::ID,
+    };
+    send(svm, caller, &[], ix(p.program, w.to_account_metas(None),
+        piron_single_asset_solana::instruction::WithdrawForInvestment { amount }.data()))
+}
+
+pub fn confirm_investment(svm: &mut LiteSVM, p: &Pool, caller: &Keypair, actual_amount: u64)
+    -> Result<(), String> {
+    let a = piron_single_asset_solana::accounts::Authority { pool: p.pool, authority: caller.pubkey() };
+    send(svm, caller, &[], ix(p.program, a.to_account_metas(None),
+        piron_single_asset_solana::instruction::ConfirmInvestment {
+            actual_amount, proof: "ipfs://proof".to_string() }.data()))
+}
+
+pub fn record_coupon(svm: &mut LiteSVM, p: &Pool, caller: &Keypair, amount: u64) -> Result<(), String> {
+    let c = piron_single_asset_solana::accounts::SpvPaysIn {
+        pool: p.pool, vault: p.vault, share_mint: p.share_mint, spv_asset: p.spv_asset,
+        spv: caller.pubkey(), token_program: spl_token::ID,
+    };
+    send(svm, caller, &[], ix(p.program, c.to_account_metas(None),
+        piron_single_asset_solana::instruction::RecordCoupon { amount }.data()))
+}
+
+pub fn distribute_coupons(svm: &mut LiteSVM, p: &Pool, caller: &Keypair) -> Result<(), String> {
+    let a = piron_single_asset_solana::accounts::Authority { pool: p.pool, authority: caller.pubkey() };
+    send(svm, caller, &[], ix(p.program, a.to_account_metas(None),
+        piron_single_asset_solana::instruction::DistributeCoupons {}.data()))
+}
+
+pub fn claim_coupon(svm: &mut LiteSVM, p: &Pool, who: &Keypair, asset_acc: Pubkey, share_acc: Pubkey)
+    -> Result<(), String> {
+    let (position, _) = seeds::position(&p.pool, &who.pubkey());
+    let c = piron_single_asset_solana::accounts::ClaimCoupon {
+        pool: p.pool, position, vault: p.vault, share_mint: p.share_mint,
+        holder_shares: share_acc, holder_asset: asset_acc, holder: who.pubkey(),
+        token_program: spl_token::ID,
+    };
+    send(svm, who, &[], ix(p.program, c.to_account_metas(None),
+        piron_single_asset_solana::instruction::ClaimCoupon {}.data()))
+}
+
+pub fn settle_maturity(svm: &mut LiteSVM, p: &Pool, caller: &Keypair, final_amount: u64)
+    -> Result<(), String> {
+    let m = piron_single_asset_solana::accounts::SpvPaysIn {
+        pool: p.pool, vault: p.vault, share_mint: p.share_mint, spv_asset: p.spv_asset,
+        spv: caller.pubkey(), token_program: spl_token::ID,
+    };
+    send(svm, caller, &[], ix(p.program, m.to_account_metas(None),
+        piron_single_asset_solana::instruction::SettleMaturity { final_amount }.data()))
+}
+
+pub fn load_pool(svm: &LiteSVM, pool: &Pubkey) -> piron_single_asset_solana::state::Pool {
+    let raw = svm.get_account(pool).unwrap();
+    anchor_lang::AccountDeserialize::try_deserialize(&mut &raw.data[..]).unwrap()
 }

@@ -599,8 +599,10 @@ impl LockedPoolManager {
 
     /// Sends idle capital to the SPV.
     ///
-    /// Locked pools owe fixed amounts on fixed dates, so the manager keeps back what the
-    /// nearest maturities need: `deployable` is the escrow balance less committed payouts.
+    /// The whole balance is drawable. Holding back principal plus the interest owed would
+    /// leave the pool nothing to invest, and the yield paying the promised APY has to come
+    /// from somewhere; a maturity is met out of what the SPV returns, and an exit that
+    /// lands before then is covered by the reserve.
     pub fn deploy_to_spv(env: Env, caller: Address, amount: i128) -> Result<(), Error> {
         Self::require_spv(&env, &caller)?;
         if amount <= 0 {

@@ -16,6 +16,9 @@ pub const MAX_TIERS: usize = 8;
 #[derive(InitSpace)]
 pub struct LockedPool {
     pub pool_id: u64,
+    /// False stops new deposits and rollovers. Redemptions and exits stay open — closing
+    /// a pool must never trap money already in it.
+    pub is_open: bool,
     pub authority: Pubkey,
     pub spv: Pubkey,
     pub treasury: Pubkey,

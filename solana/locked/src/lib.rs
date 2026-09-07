@@ -59,6 +59,7 @@ pub mod piron_locked {
         pool.vault = ctx.accounts.vault.key();
         pool.min_investment = min_investment;
         pool.next_position_id = 1;
+        pool.is_open = true;
         pool.bump = ctx.bumps.pool;
         emit!(PoolInitialized { pool: pool.key(), pool_id });
         Ok(())
@@ -79,6 +80,31 @@ pub mod piron_locked {
         Ok(index as u32)
     }
 
+    /// Opens or closes a tier for new business.
+    ///
+    /// Terms are fixed per position at deposit, so closing one never touches a position
+    /// already running under it.
+    pub fn set_tier_active(ctx: Context<Authority>, tier_index: u32, is_active: bool) -> Result<()> {
+        let pool = &mut ctx.accounts.pool;
+        if tier_index as usize >= pool.tier_count as usize {
+            return Err(map_err(piron_core::Error::InvalidTier));
+        }
+        pool.tiers[tier_index as usize].is_active = is_active;
+        emit!(TierSet { pool: pool.key(), index: tier_index, is_active });
+        Ok(())
+    }
+
+    /// Opens or closes the pool to new business.
+    ///
+    /// Redemptions, exits and debt settlement carry on regardless — a closed pool must
+    /// still let people out of what they are already in.
+    pub fn set_open(ctx: Context<Authority>, is_open: bool) -> Result<()> {
+        let pool = &mut ctx.accounts.pool;
+        pool.is_open = is_open;
+        emit!(PoolOpenSet { pool: pool.key(), is_open });
+        Ok(())
+    }
+
     /// Locks capital into a tier. `payment_choice`: 0 upfront, 1 at maturity.
     pub fn deposit(
         ctx: Context<Deposit>,
@@ -88,6 +114,9 @@ pub mod piron_locked {
     ) -> Result<u64> {
         let now = clock_now()?;
         let pool = &ctx.accounts.pool;
+        if !pool.is_open {
+            return Err(map_err(piron_core::Error::PoolInactive));
+        }
         let tier = pool.tier(tier_index).map_err(map_err)?;
         validate::validate_deposit(amount as i128, tier_index, &tier, pool.tier_count as u32)
             .map_err(map_err)?;
@@ -105,6 +134,21 @@ pub mod piron_locked {
 
         token::transfer(ctx.accounts.holder_to_vault(), amount)?;
 
+        // An upfront position pays its interest out immediately, which is why only the
+        // remainder is ever put to work. Without this the holder chooses "upfront", gets
+        // nothing on day one, and redeems at maturity for principal alone.
+        let upfront = if matches!(built.payment_choice, lt::InterestPayment::Upfront) {
+            to_u64(built.full_interest_amount).map_err(map_err)?
+        } else {
+            0
+        };
+        if upfront > 0 {
+            let (pool_id, bump) = (ctx.accounts.pool.pool_id, ctx.accounts.pool.bump);
+            let id_bytes = pool_id.to_le_bytes();
+            let signer: &[&[&[u8]]] = &[&[seeds::POOL, id_bytes.as_ref(), &[bump]]];
+            token::transfer(ctx.accounts.vault_to_holder().with_signer(signer), upfront)?;
+        }
+
         let position_id = ctx.accounts.pool.next_position_id;
         let position = &mut ctx.accounts.position;
         position.pool = ctx.accounts.pool.key();
@@ -113,20 +157,24 @@ pub mod piron_locked {
         position.bump = ctx.bumps.position;
         position.apply(&built).map_err(map_err)?;
 
-        let (principal, committed, invested) =
+        // (principal, paid upfront, still owed at maturity) — the three lines the pool
+        // reports. Interest committed is the whole of it either way.
+        let (principal, paid_upfront, pending) =
             lifecycle::metrics_delta_on_open(&built).map_err(map_err)?;
 
         let pool = &mut ctx.accounts.pool;
         pool.next_position_id = add(position_id, 1)?;
         pool.total_principal_locked = add(pool.total_principal_locked, to_u64(principal).map_err(map_err)?)?;
-        pool.total_interest_committed = add(pool.total_interest_committed, to_u64(committed).map_err(map_err)?)?;
-        pool.total_invested_amount = add(pool.total_invested_amount, to_u64(invested).map_err(map_err)?)?;
+        pool.total_interest_committed = add(
+            pool.total_interest_committed,
+            to_u64(built.full_interest_amount).map_err(map_err)?,
+        )?;
+        pool.total_interest_paid_upfront =
+            add(pool.total_interest_paid_upfront, to_u64(paid_upfront).map_err(map_err)?)?;
+        pool.total_interest_pending_maturity =
+            add(pool.total_interest_pending_maturity, to_u64(pending).map_err(map_err)?)?;
         pool.total_expected_maturity_payout =
             add(pool.total_expected_maturity_payout, to_u64(built.expected_maturity_payout).map_err(map_err)?)?;
-        if matches!(built.payment_choice, lt::InterestPayment::AtMaturity) {
-            pool.total_interest_pending_maturity =
-                add(pool.total_interest_pending_maturity, to_u64(built.full_interest_amount).map_err(map_err)?)?;
-        }
         pool.active_positions += 1;
         pool.total_positions += 1;
 
@@ -169,6 +217,94 @@ pub mod piron_locked {
             payout,
         });
         Ok(payout)
+    }
+
+    /// Rolls a matured position into a fresh term without the money leaving the pool.
+    ///
+    /// The whole maturity payout becomes the new principal — interest compounds — and the
+    /// old position closes as rolled over rather than redeemed, so the two are told apart
+    /// in the record. An upfront term still pays its interest on day one, which is the
+    /// only cash that moves.
+    pub fn roll_over(ctx: Context<RollOver>, tier_index: u32, payment_choice: u8) -> Result<u64> {
+        let now = clock_now()?;
+        if !ctx.accounts.pool.is_open {
+            return Err(map_err(piron_core::Error::PoolInactive));
+        }
+        let tier = ctx.accounts.pool.tier(tier_index).map_err(map_err)?;
+        let payment = if payment_choice == 0 {
+            lt::InterestPayment::Upfront
+        } else {
+            lt::InterestPayment::AtMaturity
+        };
+
+        let roll = lifecycle::roll_over(
+            &ctx.accounts.position.to_core(),
+            &tier,
+            tier_index,
+            payment,
+            now,
+        )
+        .map_err(map_err)?;
+
+        let old = &mut ctx.accounts.position;
+        old.status = state::status_to_u8(roll.closed_status);
+        old.actual_payout = to_u64(roll.principal_rolled).map_err(map_err)?;
+
+        let position_id = ctx.accounts.pool.next_position_id;
+        let fresh = &mut ctx.accounts.new_position;
+        fresh.pool = ctx.accounts.pool.key();
+        fresh.owner = ctx.accounts.holder.key();
+        fresh.position_id = position_id;
+        fresh.bump = ctx.bumps.new_position;
+        fresh.apply(&roll.new_position).map_err(map_err)?;
+
+        // Upfront interest is the only cash that leaves; the principal never moves.
+        let upfront = if roll.new_position.interest_paid {
+            to_u64(roll.new_position.full_interest_amount).map_err(map_err)?
+        } else {
+            0
+        };
+        if upfront > 0 {
+            let (pool_id, bump) = (ctx.accounts.pool.pool_id, ctx.accounts.pool.bump);
+            let id_bytes = pool_id.to_le_bytes();
+            let signer: &[&[&[u8]]] = &[&[seeds::POOL, id_bytes.as_ref(), &[bump]]];
+            token::transfer(ctx.accounts.vault_to_holder().with_signer(signer), upfront)?;
+        }
+
+        let (principal, committed, invested) =
+            lifecycle::metrics_delta_on_open(&roll.new_position).map_err(map_err)?;
+        let rolled_out = ctx.accounts.position.principal_deposited;
+        let pool = &mut ctx.accounts.pool;
+        pool.next_position_id = add(position_id, 1)?;
+        // The old principal leaves the book as the new, larger one joins it.
+        pool.total_principal_locked = pool
+            .total_principal_locked
+            .saturating_sub(rolled_out)
+            .checked_add(to_u64(principal).map_err(map_err)?)
+            .ok_or_else(|| map_err(piron_core::Error::Overflow))?;
+        pool.total_interest_committed = add(pool.total_interest_committed, to_u64(committed).map_err(map_err)?)?;
+        pool.total_invested_amount = add(pool.total_invested_amount, to_u64(invested).map_err(map_err)?)?;
+        pool.total_expected_maturity_payout = pool
+            .total_expected_maturity_payout
+            .saturating_sub(to_u64(roll.principal_rolled).map_err(map_err)?)
+            .checked_add(to_u64(roll.new_position.expected_maturity_payout).map_err(map_err)?)
+            .ok_or_else(|| map_err(piron_core::Error::Overflow))?;
+        if matches!(roll.new_position.payment_choice, lt::InterestPayment::AtMaturity) {
+            pool.total_interest_pending_maturity = add(
+                pool.total_interest_pending_maturity,
+                to_u64(roll.new_position.full_interest_amount).map_err(map_err)?,
+            )?;
+        }
+        pool.total_positions += 1;
+
+        emit!(PositionRolledOver {
+            pool: pool.key(),
+            owner: ctx.accounts.holder.key(),
+            old_position_id: ctx.accounts.position.position_id,
+            new_position_id: position_id,
+            principal: to_u64(roll.principal_rolled).map_err(map_err)?,
+        });
+        Ok(position_id)
     }
 
     /// Exits before maturity, paying accrued interest less the tier's penalty.
@@ -261,6 +397,8 @@ pub mod piron_locked {
         let id_bytes = pool_id.to_le_bytes();
         let signer: &[&[&[u8]]] = &[&[seeds::POOL, id_bytes.as_ref(), &[bump]]];
         token::transfer(ctx.accounts.vault_to_spv().with_signer(signer), amount)?;
+        let pool = &mut ctx.accounts.pool;
+        pool.total_invested_amount = add(pool.total_invested_amount, amount)?;
         emit!(CapitalDeployed { pool: ctx.accounts.pool.key(), amount });
         Ok(())
     }
@@ -271,6 +409,9 @@ pub mod piron_locked {
             return Err(map_err(piron_core::Error::InvalidAmount));
         }
         token::transfer(ctx.accounts.spv_to_vault(), amount)?;
+        let pool = &mut ctx.accounts.pool;
+        // Returns retire what is outstanding first; anything beyond it is yield.
+        pool.total_invested_amount = pool.total_invested_amount.saturating_sub(amount);
         emit!(CapitalReturned { pool: ctx.accounts.pool.key(), amount });
         Ok(())
     }
@@ -322,6 +463,13 @@ pub struct Deposit<'info> {
 }
 
 impl<'info> Deposit<'info> {
+    fn vault_to_holder(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
+        CpiContext::new(self.token_program.key(), Transfer {
+            from: self.vault.to_account_info(),
+            to: self.holder_asset.to_account_info(),
+            authority: self.pool.to_account_info(),
+        })
+    }
     fn holder_to_vault(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         CpiContext::new(self.token_program.key(), Transfer {
             from: self.holder_asset.to_account_info(),
@@ -347,6 +495,39 @@ pub struct Settle<'info> {
     /// CHECK: matched against `position.owner` by `has_one`.
     pub owner: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct RollOver<'info> {
+    #[account(mut, seeds = [seeds::POOL, &pool.pool_id.to_le_bytes()], bump = pool.bump)]
+    pub pool: Box<Account<'info, LockedPool>>,
+    #[account(mut, seeds = [seeds::POSITION, pool.key().as_ref(), &position.position_id.to_le_bytes()],
+              bump = position.bump, has_one = owner)]
+    pub position: Box<Account<'info, LockedPosition>>,
+    #[account(init, payer = holder, space = LockedPosition::LEN,
+              seeds = [seeds::POSITION, pool.key().as_ref(), &pool.next_position_id.to_le_bytes()],
+              bump)]
+    pub new_position: Box<Account<'info, LockedPosition>>,
+    #[account(mut, address = pool.vault)]
+    pub vault: Box<Account<'info, TokenAccount>>,
+    #[account(mut, token::mint = pool.asset_mint, token::authority = holder)]
+    pub holder_asset: Box<Account<'info, TokenAccount>>,
+    #[account(mut, address = position.owner)]
+    pub holder: Signer<'info>,
+    /// CHECK: matched against `position.owner` by `has_one`.
+    pub owner: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
+impl<'info> RollOver<'info> {
+    fn vault_to_holder(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
+        CpiContext::new(self.token_program.key(), Transfer {
+            from: self.vault.to_account_info(),
+            to: self.holder_asset.to_account_info(),
+            authority: self.pool.to_account_info(),
+        })
+    }
 }
 
 impl<'info> Settle<'info> {
@@ -469,6 +650,9 @@ impl<'info> SpvMovesFunds<'info> {
 #[event] pub struct TierAdded { pub pool: Pubkey, pub index: u32 }
 #[event] pub struct PositionOpened { pub pool: Pubkey, pub owner: Pubkey, pub position_id: u64, pub principal: u64, pub tier_index: u32 }
 #[event] pub struct PositionRedeemed { pub pool: Pubkey, pub owner: Pubkey, pub position_id: u64, pub payout: u64 }
+#[event] pub struct TierSet { pub pool: Pubkey, pub index: u32, pub is_active: bool }
+#[event] pub struct PoolOpenSet { pub pool: Pubkey, pub is_open: bool }
+#[event] pub struct PositionRolledOver { pub pool: Pubkey, pub owner: Pubkey, pub old_position_id: u64, pub new_position_id: u64, pub principal: u64 }
 #[event] pub struct PositionExitedEarly { pub pool: Pubkey, pub owner: Pubkey, pub position_id: u64, pub payout: u64, pub penalty: u64 }
 #[event] pub struct ReserveBorrowed { pub pool: Pubkey, pub amount: u64, pub outstanding: u64 }
 #[event] pub struct ReserveRepaid { pub pool: Pubkey, pub amount: u64, pub outstanding: u64 }

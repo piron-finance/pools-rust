@@ -264,13 +264,18 @@ fn withdrawals_are_served_in_order() {
     f.client.request_withdrawal(&f.alice, &100_000);
     f.client.request_withdrawal(&f.bob, &100_000);
 
+    // The shares go when the request is made, so order shows in who has been paid.
+    assert_eq!(f.client.shares_of(&f.alice), 900_000);
+    assert_eq!(f.client.shares_of(&f.bob), 900_000);
+    let (alice_before, bob_before) = (f.token.balance(&f.alice), f.token.balance(&f.bob));
+
     // One at a time, head first.
     assert_eq!(f.client.process_withdrawals(&f.admin, &1), 1);
-    assert_eq!(f.client.shares_of(&f.alice), 900_000);
-    assert_eq!(f.client.shares_of(&f.bob), 1_000_000);
+    assert_eq!(f.token.balance(&f.alice), alice_before + 99_500);
+    assert_eq!(f.token.balance(&f.bob), bob_before, "still waiting its turn");
 
     assert_eq!(f.client.process_withdrawals(&f.admin, &1), 1);
-    assert_eq!(f.client.shares_of(&f.bob), 900_000);
+    assert_eq!(f.token.balance(&f.bob), bob_before + 99_500);
 }
 
 #[test]
@@ -295,14 +300,16 @@ fn the_queue_stalls_rather_than_overpaying_when_capital_is_deployed() {
     f.client.request_withdrawal(&f.alice, &100_000);
 
     // 100,000 is owed but only 50,000 is liquid; nothing is paid.
+    let before = f.token.balance(&f.alice);
     assert_eq!(f.client.process_withdrawals(&f.admin, &10), 0);
-    assert_eq!(f.client.shares_of(&f.alice), 1_000_000);
+    assert_eq!(f.token.balance(&f.alice), before);
     assert_eq!(f.client.queue_length(), 1);
 
     // Once the SPV returns capital the same request clears.
     f.client.return_capital(&f.spv, &500_000);
     assert_eq!(f.client.process_withdrawals(&f.admin, &10), 1);
-    assert_eq!(f.client.shares_of(&f.alice), 900_000);
+    assert_eq!(f.token.balance(&f.alice), before + 99_500);
+    assert_eq!(f.client.queue_length(), 0);
 }
 
 #[test]
@@ -567,4 +574,81 @@ fn retiring_a_holding_keeps_the_others_valued() {
 
     // The two survivors are both still marked, at face now that they are past maturity.
     assert_eq!(f.client.total_nav(), nav_before);
+}
+
+#[test]
+fn queueing_an_exit_does_not_move_the_price_for_anyone_else() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+    f.client.deposit(&f.bob, &1_000_000);
+    f.env.ledger().set_timestamp(START + 7 * DAY);
+
+    let before = f.client.nav_per_share();
+    f.client.request_withdrawal(&f.alice, &500_000);
+
+    // Alice's shares are gone and her cash is owed. Both sides of the fraction move by the
+    // same amount, so Bob's share is worth exactly what it was a moment ago.
+    assert_eq!(f.client.nav_per_share(), before);
+
+    // And it still holds once she is actually paid.
+    f.client.process_withdrawals(&f.admin, &10);
+    assert_eq!(f.client.nav_per_share(), before);
+}
+
+#[test]
+fn moving_shares_after_queueing_cannot_strand_the_queue() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+    f.client.deposit(&f.bob, &1_000_000);
+    f.env.ledger().set_timestamp(START + 7 * DAY);
+
+    f.client.request_withdrawal(&f.alice, &100_000);
+    f.client.request_withdrawal(&f.bob, &100_000);
+
+    // Alice sends everything she has left away. If her shares were still owed at service
+    // time the burn would fail here and the head would never advance past her — stranding
+    // Bob and everyone behind him permanently.
+    let carol = Address::generate(&f.env);
+    let shares = pool_share::PoolShareClient::new(&f.env, &f.client.share_token());
+    shares.transfer(&f.alice, &carol, &900_000);
+    assert_eq!(f.client.shares_of(&f.alice), 0);
+
+    assert_eq!(f.client.process_withdrawals(&f.admin, &10), 2);
+    assert_eq!(f.client.queue_length(), 0);
+    assert_eq!(f.token.balance(&f.bob), 1_000_000 + 99_500);
+}
+
+#[test]
+fn the_same_shares_cannot_be_queued_twice() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+    f.env.ledger().set_timestamp(START + 7 * DAY);
+
+    f.client.request_withdrawal(&f.alice, &1_000_000);
+    // They were burned on the way in, so there is nothing left to promise a second time.
+    assert_eq!(f.client.shares_of(&f.alice), 0);
+    assert_eq!(
+        f.client.try_request_withdrawal(&f.alice, &1_000_000),
+        Err(Ok(Error::InsufficientShares))
+    );
+}
+
+#[test]
+fn cash_owed_to_the_queue_is_not_the_spvs_to_draw() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+    f.env.ledger().set_timestamp(START + 7 * DAY);
+    f.client.request_withdrawal(&f.alice, &900_000);
+
+    // 900,000 gross is spoken for; only the remaining 100,000 is the SPV's to draw.
+    assert_eq!(f.client.deployable(), 100_000);
+    assert_eq!(
+        f.client.try_deploy_capital(&f.spv, &200_000),
+        Err(Ok(Error::ReserveBreached))
+    );
+
+    // Having drawn everything it may, the queue still clears in full.
+    f.client.deploy_capital(&f.spv, &100_000);
+    assert_eq!(f.client.process_withdrawals(&f.admin, &10), 1);
+    assert_eq!(f.token.balance(&f.alice), 1_000_000 + 895_500);
 }

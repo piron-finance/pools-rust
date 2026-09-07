@@ -142,9 +142,26 @@ impl WithdrawalQueue {
     pub fn slot(&self, index: u64) -> usize {
         (index % QUEUE_CAPACITY as u64) as usize
     }
+    pub fn is_empty(&self) -> bool {
+        self.head >= self.tail
+    }
     pub fn is_full(&self) -> bool {
         self.tail - self.head >= QUEUE_CAPACITY as u64
     }
+}
+
+/// When a holder last bought in, so the holding period can be enforced.
+#[account]
+#[derive(InitSpace)]
+pub struct HolderRecord {
+    pub pool: Pubkey,
+    pub owner: Pubkey,
+    pub last_deposit_at: i64,
+    pub bump: u8,
+}
+
+impl HolderRecord {
+    pub const LEN: usize = 8 + Self::INIT_SPACE;
 }
 
 #[zero_copy]
@@ -160,6 +177,20 @@ pub struct StoredRequest {
     pub processed_time: i64,
     pub processed: u8,
     pub _pad: [u8; 7],
+}
+
+impl StoredRequest {
+    pub fn to_core(&self) -> sy::WithdrawalRequest {
+        sy::WithdrawalRequest {
+            shares: self.shares as Amount,
+            request_time: self.request_time.max(0) as u64,
+            deadline: self.deadline.max(0) as u64,
+            estimated_value: self.estimated_value as Amount,
+            fee_amount: self.fee_amount as Amount,
+            processed: self.processed != 0,
+            processed_time: self.processed_time.max(0) as u64,
+        }
+    }
 }
 
 /// Narrows a core amount back into the `u64` a token and an account field hold.

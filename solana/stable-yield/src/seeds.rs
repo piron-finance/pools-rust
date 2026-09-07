@@ -14,6 +14,16 @@ pub const SHARE_MINT: &[u8] = b"syshare";
 /// the pool account also stops every NAV read loading 20KB it does not need.
 pub const QUEUE: &[u8] = b"syqueue";
 
+/// `[HOLDER, pool, owner]` — when this holder last bought in.
+///
+/// The pool carries a holding period, and enforcing it needs a per-holder clock. Solana
+/// has no mapping to hang it off, so it is its own small account.
+pub const HOLDER: &[u8] = b"syholder";
+
+pub fn holder(pool: &Pubkey, owner: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[HOLDER, pool.as_ref(), owner.as_ref()], &crate::ID)
+}
+
 pub fn pool(pool_id: u64) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[POOL, &pool_id.to_le_bytes()], &crate::ID)
 }

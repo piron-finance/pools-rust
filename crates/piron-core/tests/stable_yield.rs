@@ -255,12 +255,17 @@ fn deposits_are_refused_when_the_pool_is_closed_or_the_ticket_is_small() {
 // ---------------------------------------------------------------- the queue
 
 fn request(shares: Amount) -> WithdrawalRequest {
+    quoted(shares, shares, 0)
+}
+
+/// A request carrying the quote it was struck with, which is what the batch pays.
+fn quoted(shares: Amount, net: Amount, fee: Amount) -> WithdrawalRequest {
     WithdrawalRequest {
         shares,
         request_time: 1_000,
         deadline: 0,
-        estimated_value: shares,
-        fee_amount: 0,
+        estimated_value: net,
+        fee_amount: fee,
         processed: false,
         processed_time: 0,
     }
@@ -289,15 +294,20 @@ fn enqueueing_advances_the_tail_and_the_pending_total() {
     let q = queue::enqueue(&q, &quote).unwrap();
     assert_eq!(q.tail, 1);
     assert_eq!(q.len(), 1);
-    assert_eq!(q.total_pending_value, 99_500);
+    // Gross: the fee leaves the escrow too.
+    assert_eq!(q.total_pending_value, 100_000);
 }
 
 #[test]
 fn a_batch_serves_in_order_and_stops_when_liquidity_runs_out() {
     let q = queue_of(3);
-    let requests = [request(100_000), request(100_000), request(100_000)];
+    let requests = [
+        quoted(100_000, 99_500, 500),
+        quoted(100_000, 99_500, 500),
+        quoted(100_000, 99_500, 500),
+    ];
 
-    let out = queue::process_batch(&q, &requests, 250_000, nav::NAV_PRECISION, 50, 20).unwrap();
+    let out = queue::process_batch(&q, &requests, 250_000, 20).unwrap();
 
     // Two fit; the third needs 100,000 against 50,000 left.
     assert_eq!(out.processed, 2);
@@ -314,7 +324,7 @@ fn a_large_request_blocks_the_queue_rather_than_being_skipped() {
     // The first is unaffordable; the second would fit but must wait its turn.
     let requests = [request(500_000), request(10_000)];
 
-    let out = queue::process_batch(&q, &requests, 100_000, nav::NAV_PRECISION, 0, 20).unwrap();
+    let out = queue::process_batch(&q, &requests, 100_000, 20).unwrap();
     assert_eq!(out.processed, 0);
     assert_eq!(out.new_head, 0);
     assert!(out.stopped_for_liquidity);
@@ -325,7 +335,7 @@ fn a_batch_stops_at_the_size_cap_without_flagging_liquidity() {
     let q = queue_of(3);
     let requests = [request(10_000), request(10_000), request(10_000)];
 
-    let out = queue::process_batch(&q, &requests, 1_000_000, nav::NAV_PRECISION, 0, 2).unwrap();
+    let out = queue::process_batch(&q, &requests, 1_000_000, 2).unwrap();
     assert_eq!(out.processed, 2);
     assert_eq!(out.new_head, 2);
     assert!(!out.stopped_for_liquidity);
@@ -335,14 +345,7 @@ fn a_batch_stops_at_the_size_cap_without_flagging_liquidity() {
 fn a_batch_larger_than_the_footprint_allows_is_refused() {
     let q = queue_of(1);
     assert_eq!(
-        queue::process_batch(
-            &q,
-            &[request(1)],
-            1_000_000,
-            nav::NAV_PRECISION,
-            0,
-            queue::MAX_WITHDRAWAL_BATCH + 1
-        ),
+        queue::process_batch(&q, &[request(1)], 1_000_000, queue::MAX_WITHDRAWAL_BATCH + 1),
         Err(Error::BatchTooLarge)
     );
 }
@@ -350,7 +353,7 @@ fn a_batch_larger_than_the_footprint_allows_is_refused() {
 #[test]
 fn an_empty_queue_has_nothing_to_process() {
     assert_eq!(
-        queue::process_batch(&queue_of(0), &[], 1_000_000, nav::NAV_PRECISION, 0, 20),
+        queue::process_batch(&queue_of(0), &[], 1_000_000, 20),
         Err(Error::QueueEmpty)
     );
 }
@@ -362,22 +365,24 @@ fn an_already_served_request_is_stepped_over_not_paid_twice() {
     done.processed = true;
     let requests = [done, request(100_000)];
 
-    let out = queue::process_batch(&q, &requests, 1_000_000, nav::NAV_PRECISION, 0, 20).unwrap();
+    let out = queue::process_batch(&q, &requests, 1_000_000, 20).unwrap();
     assert_eq!(out.processed, 1);
     assert_eq!(out.total_paid, 100_000);
     assert_eq!(out.new_head, 2);
 }
 
 #[test]
-fn withdrawals_are_repriced_when_served_not_when_queued() {
-    // Queued at par, served after a 10% gain: the holder gets the gain, which is what
-    // stops queueing being a free option on the NAV.
+fn a_request_is_paid_the_quote_it_was_struck_with() {
+    // The shares were burned when the request was made. Re-pricing at service time would
+    // divide the pool by a supply those shares had already left, so a holder would be
+    // paid more the longer the queue took to reach them — out of the remaining holders.
     let q = queue_of(1);
-    let requests = [request(100_000)];
-    let higher = nav::nav_per_share(1_100_000, 1_000_000).unwrap();
+    let requests = [quoted(100_000, 99_500, 500)];
 
-    let out = queue::process_batch(&q, &requests, 1_000_000, higher, 0, 20).unwrap();
-    assert_eq!(out.total_paid, 110_000);
+    let out = queue::process_batch(&q, &requests, 1_000_000, 20).unwrap();
+    assert_eq!(out.total_paid, 99_500);
+    assert_eq!(out.total_fees, 500);
+    assert_eq!(out.shares_burned, 100_000, "settled, not burned again");
 }
 
 #[test]

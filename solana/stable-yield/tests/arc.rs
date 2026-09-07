@@ -6,6 +6,9 @@
 //! move value between lines rather than create any: NAV is unchanged, because cash that
 //! left the vault is still the pool's.
 
+#[allow(dead_code)]
+mod harness;
+
 use anchor_lang::{system_program, InstructionData, ToAccountMetas};
 use anchor_spl::token::spl_token;
 use litesvm::LiteSVM;
@@ -137,6 +140,7 @@ fn load_pool(svm: &LiteSVM, pool: &Pubkey) -> piron_stable_yield_solana::state::
 fn the_queue_grows_past_what_one_instruction_can_allocate() {
     let mut svm = LiteSVM::new();
     let program = piron_stable_yield_solana::ID;
+    harness::assert_fresh("target/deploy/piron_stable_yield_solana.so");
     svm.add_program_from_file(program, "target/deploy/piron_stable_yield_solana.so")
         .expect("run `cargo build-sbf` first");
 
@@ -205,8 +209,11 @@ fn the_queue_grows_past_what_one_instruction_can_allocate() {
     mint_to(&mut svm, &authority, &authority, &asset, &holder_asset, 1_000_000_000);
 
     let dep = piron_stable_yield_solana::accounts::Deposit {
-        pool, vault, share_mint, holder_asset, holder_shares,
+        pool, queue,
+        holder_record: piron_stable_yield_solana::seeds::holder(&pool, &holder.pubkey()).0,
+        vault, share_mint, holder_asset, holder_shares,
         holder: holder.pubkey(), token_program: spl_token::ID,
+        system_program: solana_pubkey::pubkey!("11111111111111111111111111111111"),
     };
     send(&mut svm, &holder, &[], anchor_ix(program, dep.to_account_metas(None),
         piron_stable_yield_solana::instruction::Deposit { pool_id: POOL_ID, assets: 1_000_000_000 }.data()))
@@ -217,7 +224,7 @@ fn the_queue_grows_past_what_one_instruction_can_allocate() {
     assert_eq!(token_balance(&svm, &holder_shares), 1_000_000_000, "struck 1:1 at par");
 
     let draw = piron_stable_yield_solana::accounts::SpvMovesFunds {
-        pool, vault, spv_asset, spv: spv.pubkey(), token_program: spl_token::ID,
+        pool, queue, vault, spv_asset, spv: spv.pubkey(), token_program: spl_token::ID,
     };
     send(&mut svm, &spv, &[], anchor_ix(program, draw.to_account_metas(None),
         piron_stable_yield_solana::instruction::DeployCapital { pool_id: POOL_ID, amount: 800_000_000 }.data()))
