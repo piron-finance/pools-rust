@@ -30,6 +30,9 @@ pub struct Pool {
     /// authority over an account that does.
     pub vault: Pubkey,
     pub share_mint: Pubkey,
+    /// Where withdrawal fees go. Recorded here so the destination is protocol state
+    /// rather than something the withdrawing caller supplies.
+    pub treasury: Pubkey,
 
     // --- terms ---
     pub instrument_type: u8,
@@ -167,6 +170,13 @@ pub struct Position {
     pub owner: Pubkey,
     pub deposit_time: i64,
     pub coupons_claimed: u64,
+    /// Shares subscribed through this position.
+    ///
+    /// Coupon entitlement is struck on this, not on the holder's live token balance.
+    /// The balance is a number anyone can move between accounts, and an entitlement
+    /// derived from it resets every time it moves — so the same coupon could be claimed
+    /// once per address the shares passed through. This figure only the program writes.
+    pub shares: u64,
     pub bump: u8,
 }
 
@@ -216,6 +226,7 @@ mod tests {
     #[test]
     fn the_declared_size_matches_what_is_written() {
         let pool = Pool {
+            treasury: Pubkey::default(),
             pool_id: 1,
             authority: Pubkey::new_unique(),
             spv: Pubkey::new_unique(),
@@ -253,6 +264,7 @@ mod tests {
         assert_eq!(Pool::LEN, 8 + borsh::to_vec(&pool).unwrap().len());
 
         let position = Position {
+            shares: 0,
             pool: Pubkey::new_unique(),
             owner: Pubkey::new_unique(),
             deposit_time: 0,
@@ -282,6 +294,7 @@ mod tests {
     #[test]
     fn the_coupon_schedule_survives_the_round_trip() {
         let mut pool = Pool {
+            treasury: Pubkey::default(),
             pool_id: 1,
             authority: Pubkey::new_unique(),
             spv: Pubkey::new_unique(),

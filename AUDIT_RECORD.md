@@ -117,6 +117,91 @@ artefact rather than the crate `cargo test` just built, so a source change with 
 `cargo-build-sbf` behind it silently tested the old program and passed. That happened once
 here and the guard exists because of it.
 
+## Second review, and what it changed
+
+A full pass across all three runtimes, each audited on its own terms rather than by
+inferring from one to the others. That distinction earned its keep twice: one critical
+exists only on Solana and has no analogue elsewhere to reason from, and two findings
+initially assumed to be shared turned out to be correctly scoped only after being checked
+against each runtime's own code.
+
+Every finding below was reproduced by an executable probe before being fixed. The probes
+are kept as regression tests with their assertions inverted.
+
+### Critical
+
+- **A coupon could be claimed twice by moving shares.** Entitlement was struck on the
+  holder's live token balance and reduced by a per-address claim record. Shares are a
+  transferable token with no transfer hook on any of the three chains, so moving them
+  reset the claim against them. Proven on all three: 200,000,000 distributed paid out
+  300,000,000 on Solana, 2,000 paid 3,000 on EVM, 25,000 paid 30,000 on Soroban — the
+  excess coming out of principal. Entitlement now follows a subscribed-shares record that
+  only the program writes. The trade is that coupon rights no longer travel with a
+  secondary-market transfer; binding them to the shares needs a transfer hook, which on
+  Solana is a Token-2022 decision rather than a program change.
+- **Solana's stable-yield NAV never accrued.** `total_nav` was a counter written on
+  mutation, and the binding never called the valuation engine, so a holding accreted
+  invisibly and the price jumped at settlement. A depositor arriving on day 89 of 90 took
+  half the term's yield for one day held. NAV is now computed from the instrument book on
+  every value-touching instruction, with a permissionless `refresh_nav_mirror` for readers
+  since Solana has no view functions.
+- **The caller named the account fees were paid into.** `treasury_asset` was constrained
+  only by mint in the Solana single-asset `Withdraw` and locked `ExitEarly` contexts, so a
+  holder passed their own account and kept the fee. Every withdrawal fee and early-exit
+  penalty was optional. No EVM or Soroban analogue — there the destination comes from
+  contract state. The single-asset pool had no treasury field at all; it has one now.
+
+### High
+
+- **Distributed coupons were stranded at settlement.** Claims required `Invested`, and the
+  settlement pot counts only *undistributed* coupons, so anything a holder had not claimed
+  was reachable by nobody. Conservation now holds: after every holder exits, custody ends
+  at zero, where 10,000 used to sit.
+- **The SPV could confirm less than it drew**, leaving the difference unrecorded as owed
+  while every valuation was struck on the smaller figure.
+- **The reserve paid a caller-chosen recipient.** `loan_to_pool` and `cover_shortfall`
+  took the pool to charge and the address to pay as independent arguments. The same defect
+  was already fixed on the Solidity side; the Soroban port carried the shape but not the
+  fix. There is now a registry of which escrow belongs to which pool.
+- **`PoolEscrow::balance()` returned the raw token balance**, so tokens sent straight to
+  the address counted as pool assets — the vault inflation setup. It now returns tracked
+  funds, with `sync_untracked()` for anything that arrives by bare transfer. Knock-on
+  caught by the tests: reserve loans transfer directly into the escrow, so
+  `borrow_from_reserve` now credits them deliberately.
+
+### Found while fixing, not in the review
+
+- **The coupon divisor had to freeze at settlement.** Once holders burn shares to redeem,
+  dividing the coupon pot by a live supply hands each successive holder a larger slice of
+  the same money — the Soroban escrow ran dry mid-probe. The same trap the redemption path
+  already avoided with `shares_at_maturity`.
+- **A holder record cannot be created inside the instruction that checks it.** The revert
+  rolls the creation back, so `init_if_needed` on the withdrawal path would have blocked
+  transferees permanently rather than merely stranding them. Hence `register_holder`.
+
+### Medium and low
+
+- Shares received by transfer were unredeemable on Solana (no holder record) and waved
+  straight past the holding period on Soroban (a missing record read as zero). Both now
+  register, with the clock starting on arrival — the rule EVM already applied in its
+  ERC-20 `_update` hook. This does not fully bind the period to the shares: an address
+  could register early and receive shares later, which needs the same transfer hook.
+- An unpaid coupon accrued past its due date without bound; capped at one period.
+- `approve` accepted `expiration_ledger` and discarded it, making every approval
+  permanent behind a signature that granted otherwise.
+- The queue payout loop was driven by payment count rather than queue position, which
+  would have misaligned payees had the head ever rested on a served entry. Latent, not
+  live, and now structurally impossible.
+- Tier durations are bounded at ten years, alongside the existing APY and penalty caps.
+
+### Left as found
+
+**Interest-bearing instruments are marked at face from day one.** `purchase_price` is
+ignored, so an SPV buying below par books an instant gain it has not earned and may never
+realise. This is deliberate parity with the Solidity and reversing it changes the
+economics of every interest-bearing pool, so it wants a decision rather than a patch.
+
+
 ## Open
 
 **Mid-deal SPV default.** `emergencyExit` is now guarded to the window where the escrow is

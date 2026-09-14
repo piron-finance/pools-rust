@@ -122,3 +122,23 @@ fn nobody_but_the_manager_can_release() {
     env.set_auths(&[]);
     escrow.release(&thief, &1);
 }
+
+/// H4. A donation straight to the escrow address does not move the pool's books.
+/// Before the fix `balance()` returned the raw token balance, so anyone could reprice a
+/// pool by transferring tokens to it — the ERC-4626 inflation setup.
+#[test]
+fn a_donation_does_not_move_the_pools_books() {
+    let f = setup();
+    f.escrow.take(&f.investor, &1_000);
+    assert_eq!(f.escrow.balance(), 1_000);
+
+    // Somebody transfers straight to the address, bypassing `take`.
+    f.token.transfer(&f.investor, &f.escrow.address, &500);
+    assert_eq!(f.escrow.balance(), 1_000, "a donation moved the books");
+    assert_eq!(f.escrow.untracked(), 500);
+
+    // It becomes the pool's only when the manager says so.
+    assert_eq!(f.escrow.sync_untracked(), 500);
+    assert_eq!(f.escrow.balance(), 1_500);
+    assert_eq!(f.escrow.untracked(), 0);
+}

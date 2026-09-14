@@ -588,3 +588,78 @@ fn the_manager_alone_can_issue_shares() {
     let f = setup();
     assert_eq!(f.share.manager(), f.client.address);
 }
+
+// ------------------------------------------------------- audit regression tests
+//
+// Each asserts the corrected behaviour, so a failure here means a fix has been undone.
+
+#[test]
+fn probe_c1_coupon_cannot_be_reclaimed_by_moving_shares() {
+    let f = setup_with(interest_bearing_config);
+
+    f.client.deposit(&f.investor, &600_000);
+    f.client.deposit(&f.other, &400_000);
+    f.client.force_close_epoch(&f.admin);
+    // The SPV places 900,000 and leaves 100,000 of principal in custody, so an
+    // overpayment has somewhere to come from.
+    f.client.withdraw_for_investment(&f.spv, &900_000);
+    f.client
+        .confirm_investment(&f.spv, &900_000, &String::from_str(&f.env, "p"));
+
+    f.client.record_coupon(&f.spv, &25_000);
+    assert_eq!(f.client.distribute_coupons(&f.operator), 25_000);
+
+    let escrow_before = f.token.balance(&f.client.escrow_address());
+    assert_eq!(f.client.claim_coupon(&f.investor), 15_000);
+
+    // The holder moves their shares to a third party who has never deposited.
+    let stranger = Address::generate(&f.env);
+    let shares = pool_share::PoolShareClient::new(&f.env, &f.client.share_token());
+    shares.transfer(&f.investor, &stranger, &600_000);
+
+    // The entitlement follows the subscription, not the balance, so an address that
+    // never bought in has nothing to claim however many shares it now holds.
+    assert_eq!(
+        f.client.try_claim_coupon(&stranger),
+        Err(Ok(Error::NoShares))
+    );
+    let paid = escrow_before - f.token.balance(&f.client.escrow_address());
+    assert_eq!(paid, 15_000, "only the claimant's own share left custody");
+}
+
+#[test]
+fn probe_h1_unclaimed_coupon_survives_settlement() {
+    let f = setup_with(interest_bearing_config);
+
+    f.client.deposit(&f.investor, &600_000);
+    f.client.deposit(&f.other, &400_000);
+    f.client.force_close_epoch(&f.admin);
+    f.client.withdraw_for_investment(&f.spv, &TARGET);
+    f.client
+        .confirm_investment(&f.spv, &TARGET, &String::from_str(&f.env, "p"));
+
+    f.client.record_coupon(&f.spv, &25_000);
+    f.client.distribute_coupons(&f.operator);
+    // One holder claims; the other is passive, like most holders.
+    f.client.claim_coupon(&f.investor);
+
+    f.env.ledger().set_timestamp(MATURITY + 1);
+    f.client.settle_maturity(&f.spv, &TARGET);
+
+    let before = f.token.balance(&f.other);
+    f.client.withdraw(&f.other, &1);
+    let got = f.token.balance(&f.other) - before;
+
+    // Conservation: once every holder is out, custody should hold nothing that is still
+    // owed to someone. Whatever remains is money nobody can now reach.
+    f.client.withdraw(&f.investor, &1);
+    let stranded = f.token.balance(&f.client.escrow_address());
+
+    // 40% of a 1,000,000 settlement is 400,000, and this holder is also owed the 10,000
+    // coupon they never got round to claiming — settled on the way out.
+    assert_eq!(
+        (got, stranded),
+        (410_000, 0),
+        "passive holder payout, and what custody still holds afterwards"
+    );
+}

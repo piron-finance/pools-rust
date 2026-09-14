@@ -68,6 +68,7 @@ pub mod piron_single_asset {
         pool.pool_id = pool_id;
         pool.authority = ctx.accounts.authority.key();
         pool.spv = terms.spv;
+        pool.treasury = terms.treasury;
         pool.asset_mint = ctx.accounts.asset_mint.key();
         pool.vault = ctx.accounts.vault.key();
         pool.share_mint = ctx.accounts.share_mint.key();
@@ -127,6 +128,7 @@ pub mod piron_single_asset {
             position.deposit_time = now as i64;
             position.bump = ctx.bumps.position;
         }
+        position.shares = add(position.shares, shares)?;
 
         emit!(DepositRecorded {
             pool: pool_key,
@@ -246,7 +248,8 @@ pub mod piron_single_asset {
     pub fn claim_coupon(ctx: Context<ClaimCoupon>) -> Result<u64> {
         let now = clock_now()?;
         let data = ctx.accounts.pool.to_core().map_err(map_err)?;
-        let user_shares = ctx.accounts.holder_shares.amount as i128;
+        // Subscribed shares, not the live token balance — see `Position::shares`.
+        let user_shares = ctx.accounts.position.shares as i128;
         let total_shares = ctx.accounts.share_mint.supply as i128;
 
         let claim = calc::claim_coupon(
@@ -337,6 +340,9 @@ pub mod piron_single_asset {
         pool.total_fees_collected = add(pool.total_fees_collected, fee)?;
         pool.refresh_value(now)?;
 
+        // Subscribed shares fall with the burn, so the entitlement basis and the supply
+        // stay in step.
+        ctx.accounts.position.shares = ctx.accounts.position.shares.saturating_sub(burned);
         if outcome.clears_position {
             ctx.accounts.position.deposit_time = 0;
         }
@@ -391,6 +397,7 @@ fn clock_now() -> Result<u64> {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct PoolTerms {
     pub spv: Pubkey,
+    pub treasury: Pubkey,
     pub instrument_type: u8,
     pub purchase_price: u64,
     pub target_raise: u64,
@@ -745,7 +752,7 @@ pub struct Withdraw<'info> {
     #[account(mut, token::mint = pool.asset_mint, token::authority = holder)]
     pub holder_asset: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut, token::mint = pool.asset_mint)]
+    #[account(mut, token::mint = pool.asset_mint, token::authority = pool.treasury)]
     pub treasury_asset: Box<Account<'info, TokenAccount>>,
 
     pub holder: Signer<'info>,

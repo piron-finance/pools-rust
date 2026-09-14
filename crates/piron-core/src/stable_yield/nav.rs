@@ -62,7 +62,10 @@ pub fn interest_bearing_value(instrument: &InstrumentHolding, now: u64) -> Resul
         instrument.next_coupon_due_date.saturating_sub(coupon_period)
     };
 
-    let since_last = now.saturating_sub(last_coupon_date);
+    // Capped at one period. Beyond the due date the coupon is late, not larger: without
+    // this a payment the SPV never makes goes on inflating NAV until maturity, and
+    // holders redeem against income that never arrived.
+    let since_last = now.saturating_sub(last_coupon_date).min(coupon_period);
     let denominator = (BASIS_POINTS as Amount)
         .checked_mul(instrument.coupon_frequency as Amount)
         .ok_or(Error::Overflow)?;

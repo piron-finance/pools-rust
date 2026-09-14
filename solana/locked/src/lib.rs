@@ -551,7 +551,7 @@ pub struct ExitEarly<'info> {
     pub vault: Box<Account<'info, TokenAccount>>,
     #[account(mut, token::mint = pool.asset_mint, token::authority = holder)]
     pub holder_asset: Box<Account<'info, TokenAccount>>,
-    #[account(mut, token::mint = pool.asset_mint)]
+    #[account(mut, token::mint = pool.asset_mint, token::authority = pool.treasury)]
     pub treasury_asset: Box<Account<'info, TokenAccount>>,
     /// The reserve's token account, and whoever may sign for it. Only touched when the
     /// vault cannot cover the exit.

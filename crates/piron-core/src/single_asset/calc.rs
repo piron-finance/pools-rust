@@ -193,7 +193,11 @@ pub fn claim_coupon(
     if !data.is_interest_bearing() {
         return Err(Error::NotInterestBearing);
     }
-    if data.status != PoolStatus::Invested {
+    // Matured is allowed as well as Invested. Settlement does not extinguish a coupon
+    // already distributed: the cash is sitting in custody earmarked for whoever has not
+    // claimed it, and `total_returns` deliberately excludes it, so refusing here would
+    // leave it reachable by nobody at all.
+    if !matches!(data.status, PoolStatus::Invested | PoolStatus::Matured) {
         return Err(Error::NotInvested);
     }
     if user_shares == 0 {
@@ -208,7 +212,17 @@ pub fn claim_coupon(
         return Err(Error::NoCouponsDistributed);
     }
 
-    let entitlement = math::pro_rata(user_shares, data.total_coupons_distributed, total_shares)?;
+    // Once the pool has settled, holders start burning shares to redeem. Dividing the
+    // coupon pot by a live supply that shrinks with each exit would hand each successive
+    // holder a larger slice of the same money — the same trap the redemption path avoids
+    // with `shares_at_maturity`, so the coupon split uses the same frozen divisor.
+    let divisor = if data.status == PoolStatus::Matured && data.shares_at_maturity > 0 {
+        data.shares_at_maturity
+    } else {
+        total_shares
+    };
+
+    let entitlement = math::pro_rata(user_shares, data.total_coupons_distributed, divisor)?;
     if entitlement <= already_claimed {
         return Err(Error::NoNewCoupons);
     }

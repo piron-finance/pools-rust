@@ -403,16 +403,19 @@ impl SingleAssetManager {
 
         Self::credit_shares(&env, &investor, outcome.shares)?;
 
-        if outcome.starts_position {
-            write_user(
-                &env,
-                &investor,
-                &storage::StoredUser {
-                    deposit_time: env.ledger().timestamp(),
-                    coupons_claimed: user.coupons_claimed,
+        write_user(
+            &env,
+            &investor,
+            &storage::StoredUser {
+                deposit_time: if outcome.starts_position {
+                    env.ledger().timestamp()
+                } else {
+                    user.deposit_time
                 },
-            );
-        }
+                coupons_claimed: user.coupons_claimed,
+                shares: user.shares.checked_add(outcome.shares).ok_or(Error::Overflow)?,
+            },
+        );
 
         Deposit {
             receiver: investor,
@@ -557,7 +560,8 @@ impl SingleAssetManager {
         let mut user = read_user(&env, &holder);
         let claim = calc::claim_coupon(
             &data,
-            Self::held_by(&env, &holder),
+            // Subscribed shares, not the live balance — see `StoredUser::shares`.
+            user.shares,
             Self::total_shares(&env),
             user.coupons_claimed,
         )?;
@@ -640,6 +644,16 @@ impl SingleAssetManager {
             },
         )?;
 
+        // Struck before the burn: `claim_coupon` divides by total supply, and burning
+        // first would shrink the denominator and overstate what is owed.
+        let mut user = read_user(&env, &owner);
+        let owed = calc::available_coupon(
+            &data,
+            user.shares,
+            Self::total_shares(&env),
+            user.coupons_claimed,
+        );
+
         Self::debit_shares(&env, &owner, outcome.shares_burned)?;
 
         let mut state = Self::state(&env)?;
@@ -650,18 +664,34 @@ impl SingleAssetManager {
             .ok_or(Error::Overflow)?;
         Self::save_state(&env, &state);
 
-        if outcome.clears_position {
-            write_user(
-                &env,
-                &owner,
-                &storage::StoredUser {
-                    deposit_time: 0,
-                    coupons_claimed: 0,
-                },
-            );
+        // Distributed coupons are earmarked in custody and excluded from the settlement
+        // pot, so a holder who never got round to claiming would otherwise leave the
+        // money reachable by nobody at all.
+        if owed > 0 {
+            user.coupons_claimed = user
+                .coupons_claimed
+                .checked_add(owed)
+                .ok_or(Error::Overflow)?;
+            let mut with_coupon = Self::state(&env)?;
+            with_coupon.total_coupons_claimed = with_coupon
+                .total_coupons_claimed
+                .checked_add(owed)
+                .ok_or(Error::Overflow)?;
+            Self::save_state(&env, &with_coupon);
         }
 
+        user.shares = (user.shares - outcome.shares_burned).max(0);
+        if outcome.clears_position {
+            user.deposit_time = 0;
+            user.coupons_claimed = 0;
+            user.shares = 0;
+        }
+        write_user(&env, &owner, &user);
+
         let escrow = Self::escrow(&env)?;
+        if owed > 0 {
+            escrow.release(&owner, &owed);
+        }
         escrow.release(&owner, &outcome.net);
         if outcome.fee > 0 {
             escrow.release(&Self::roles(&env)?.treasury, &outcome.fee);
@@ -745,7 +775,7 @@ impl SingleAssetManager {
         let user = read_user(&env, &who);
         Ok(calc::available_coupon(
             &data,
-            Self::held_by(&env, &who),
+            user.shares,
             Self::total_shares(&env),
             user.coupons_claimed,
         ))

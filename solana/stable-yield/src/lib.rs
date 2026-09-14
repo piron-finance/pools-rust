@@ -49,6 +49,7 @@ mod code {
     pub const HOLDING_PERIOD: u32 = 713;
     pub const OWNER_MISMATCH: u32 = 714;
     pub const QUEUE_NOT_EMPTY: u32 = 715;
+    pub const ALREADY_REGISTERED: u32 = 716;
 }
 
 fn local(c: u32) -> Error {
@@ -117,7 +118,7 @@ pub mod piron_stable_yield {
             (
                 pool.min_investment,
                 pool.is_active != 0,
-                net_nav(&pool, &queue)?,
+                net_nav(&pool, &queue, ctx.accounts.vault.amount, now)?,
                 pool.bump,
                 pool.pool_id,
             )
@@ -136,7 +137,8 @@ pub mod piron_stable_yield {
         token::mint_to(ctx.accounts.mint_shares().with_signer(signer), shares)?;
 
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_nav = add(pool.total_nav, assets)?;
+        // The vault has grown by `assets`; NAV follows from the balance, not a counter.
+        refresh_nav(&mut pool, ctx.accounts.vault.amount + assets, now)?;
         drop(pool);
 
         // The holding period runs from the last buy-in, so topping up restarts it.
@@ -160,11 +162,12 @@ pub mod piron_stable_yield {
     /// NAV does not move: the cash leaves the vault and reappears as in-flight capital.
     pub fn deploy_capital(ctx: Context<SpvMovesFunds>, pool_id: u64, amount: u64) -> Result<()> {
         let _ = pool_id;
+        let now = clock_now()?;
         let (total_nav, config, bump, id, spv, owed) = {
             let pool = ctx.accounts.pool.load()?;
             let queue = ctx.accounts.queue.load()?;
             (
-                net_nav(&pool, &queue)?,
+                net_nav(&pool, &queue, ctx.accounts.vault.amount, now)?,
                 piron_core::stable_yield::types::ReserveConfig {
                     min_absolute_reserve: pool.min_absolute_reserve as i128,
                     reserve_ratio_bps: pool.reserve_ratio_bps,
@@ -201,6 +204,7 @@ pub mod piron_stable_yield {
     /// as a NAV gain rather than driving the outstanding balance below zero.
     pub fn return_capital(ctx: Context<SpvMovesFunds>, pool_id: u64, amount: u64) -> Result<()> {
         let _ = pool_id;
+        let now = clock_now()?;
         if amount == 0 {
             return Err(map_err(piron_core::Error::InvalidAmount));
         }
@@ -213,7 +217,9 @@ pub mod piron_stable_yield {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let retired = amount.min(pool.in_flight);
         pool.in_flight -= retired;
-        pool.total_nav = add(pool.total_nav, amount - retired)?;
+        // Cash arrived and in-flight fell; anything beyond what was outstanding is yield,
+        // and the recomputation picks that up without a separate increment.
+        refresh_nav(&mut pool, ctx.accounts.vault.amount + amount, now)?;
         let in_flight = pool.in_flight;
         drop(pool);
         emit!(CapitalReturned { pool: ctx.accounts.pool.key(), amount, in_flight });
@@ -284,6 +290,7 @@ pub mod piron_stable_yield {
         };
         pool.instrument_count += 1;
         pool.in_flight -= instrument.purchase_price;
+        refresh_nav(&mut pool, ctx.accounts.vault.amount, now)?;
         drop(pool);
 
         emit!(InstrumentAdded { pool: ctx.accounts.pool.key(), index, purchase_price: instrument.purchase_price });
@@ -296,6 +303,7 @@ pub mod piron_stable_yield {
     /// loss, and pretending otherwise would misprice every share.
     pub fn mature_instrument(ctx: Context<SpvPaysIn>, pool_id: u64, index: u32, proceeds: u64) -> Result<()> {
         let _ = pool_id;
+        let now = clock_now()?;
         if proceeds == 0 {
             return Err(map_err(piron_core::Error::InvalidAmount));
         }
@@ -310,14 +318,10 @@ pub mod piron_stable_yield {
         if index as usize >= count || pool.instruments[index as usize].is_active == 0 {
             return Err(local(code::INSTRUMENT_NOT_FOUND));
         }
-        let marked = pool.instruments[index as usize].purchase_price;
         retire(&mut pool, index as usize);
-        // The holding's marked value becomes vault cash; anything beyond it is yield.
-        pool.total_nav = pool
-            .total_nav
-            .checked_add(proceeds.saturating_sub(marked))
-            .ok_or_else(|| map_err(piron_core::Error::Overflow))?
-            .saturating_sub(marked.saturating_sub(proceeds));
+        // The holding left the book and its proceeds arrived as cash. A settlement short
+        // of the mark shows up as a NAV fall, which is what it is.
+        refresh_nav(&mut pool, ctx.accounts.vault.amount + proceeds, now)?;
         drop(pool);
 
         emit!(InstrumentMatured { pool: ctx.accounts.pool.key(), index, proceeds });
@@ -341,7 +345,7 @@ pub mod piron_stable_yield {
         }
         let marked = pool.instruments[index as usize].purchase_price;
         retire(&mut pool, index as usize);
-        pool.total_nav = pool.total_nav.saturating_sub(marked);
+        refresh_nav(&mut pool, ctx.accounts.vault.amount, clock_now()?)?;
         drop(pool);
 
         emit!(InstrumentWrittenOff { pool: ctx.accounts.pool.key(), index, written_off: marked });
@@ -356,7 +360,11 @@ pub mod piron_stable_yield {
         let (nav_now, fee_bps, holding_period) = {
             let pool = ctx.accounts.pool.load()?;
             let queue = ctx.accounts.queue.load()?;
-            (net_nav(&pool, &queue)?, pool.withdrawal_fee_bps, pool.holding_period)
+            (
+                net_nav(&pool, &queue, ctx.accounts.vault.amount, now)?,
+                pool.withdrawal_fee_bps,
+                pool.holding_period,
+            )
         };
         validate::validate_withdrawal_request(shares as i128, ctx.accounts.holder_shares.amount as i128)
             .map_err(map_err)?;
@@ -467,16 +475,24 @@ pub mod piron_stable_yield {
         let signer: &[&[&[u8]]] = &[&[seeds::POOL, id_bytes.as_ref(), &[bump]]];
         let mut moved: u64 = 0;
 
-        for i in 0..outcome.processed as usize {
+        // Driven by queue position, not by a count of payments. `new_head` also steps
+        // over entries that were already processed, which `processed` does not count — so
+        // indexing payees by payment number would shift them by one the moment the head
+        // rested on a served entry, paying the wrong account and skipping a request while
+        // advancing past it.
+        let mut payee_index = 0usize;
+        for position in cursor.head..outcome.new_head {
             let (slot, owner, net, fee, already) = {
                 let queue = ctx.accounts.queue.load()?;
-                let slot = queue.slot(cursor.head + i as u64);
+                let slot = queue.slot(position);
                 let r = &queue.requests[slot];
                 (slot, r.owner, r.estimated_value, r.fee_amount, r.processed != 0)
             };
             if already {
                 continue;
             }
+            let i = payee_index;
+            payee_index += 1;
 
             // The operator chooses these accounts, so nothing but this stops it sending a
             // holder's money somewhere else.
@@ -508,10 +524,11 @@ pub mod piron_stable_yield {
             queue.total_pending_value = queue.total_pending_value.saturating_sub(moved);
         }
         {
-            // Both halves left the vault, so the pool's assets fall by the gross. Pending
-            // fell by the same amount, which is why the price does not move.
+            // Both halves left the vault, and pending fell by the same gross amount,
+            // which is why the price does not move.
             let mut pool = ctx.accounts.pool.load_mut()?;
-            pool.total_nav = pool.total_nav.saturating_sub(moved);
+            let left = ctx.accounts.vault.amount.saturating_sub(moved);
+            refresh_nav(&mut pool, left, now)?;
         }
 
         emit!(WithdrawalsProcessed {
@@ -538,7 +555,7 @@ pub mod piron_stable_yield {
                 return Err(local(code::QUEUE_NOT_EMPTY));
             }
             (
-                net_nav(&pool, &queue)?,
+                net_nav(&pool, &queue, ctx.accounts.vault.amount, now)?,
                 pool.withdrawal_fee_bps,
                 pool.holding_period,
                 pool.bump,
@@ -581,7 +598,7 @@ pub mod piron_stable_yield {
         }
 
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_nav = pool.total_nav.saturating_sub(gross);
+        refresh_nav(&mut pool, ctx.accounts.vault.amount.saturating_sub(gross), now)?;
         drop(pool);
 
         emit!(Withdrawn {
@@ -591,6 +608,51 @@ pub mod piron_stable_yield {
             assets: net,
         });
         Ok(net)
+    }
+
+    /// Opens a holding record for an address that received shares by transfer.
+    ///
+    /// Shares are an SPL token and SPL has no transfer hook, so the program cannot see a
+    /// transfer happen. Without this a transferee has no record, the withdrawal
+    /// constraint finds no account, and their shares are unredeemable — money the
+    /// protocol has no way to release.
+    ///
+    /// The clock starts here rather than at zero, so arriving by transfer is not a way
+    /// around the holding period. It is not a complete binding of the period to the
+    /// shares themselves: an address could register early and receive shares later.
+    /// Closing that needs a Token-2022 transfer hook, which is a deployment decision
+    /// rather than a change to this program.
+    pub fn register_holder(ctx: Context<RegisterHolder>, pool_id: u64) -> Result<()> {
+        let _ = pool_id;
+        let now = clock_now()?;
+        let record = &mut ctx.accounts.holder_record;
+        if record.owner != Pubkey::default() {
+            return Err(local(code::ALREADY_REGISTERED));
+        }
+        record.pool = ctx.accounts.pool.key();
+        record.owner = ctx.accounts.holder.key();
+        record.last_deposit_at = now as i64;
+        record.bump = ctx.bumps.holder_record;
+        emit!(HolderRegistered { pool: ctx.accounts.pool.key(), holder: record.owner });
+        Ok(())
+    }
+
+    /// Re-stamps the stored NAV mirror at the current time.
+    ///
+    /// Permissionless, and deliberately so: it only writes what anyone can already
+    /// compute from the account. Instructions price against a fresh computation
+    /// regardless, so this exists for readers — Solana has no view functions, and
+    /// between mutations the stored figure would otherwise lag the accrual.
+    pub fn refresh_nav_mirror(ctx: Context<RefreshNav>, pool_id: u64) -> Result<()> {
+        let _ = pool_id;
+        let now = clock_now()?;
+        let vault = ctx.accounts.vault.amount;
+        let mut pool = ctx.accounts.pool.load_mut()?;
+        refresh_nav(&mut pool, vault, now)?;
+        let total_nav = pool.total_nav;
+        drop(pool);
+        emit!(NavRefreshed { pool: ctx.accounts.pool.key(), total_nav });
+        Ok(())
     }
 
     /// Books a coupon the SPV has collected on a holding.
@@ -629,7 +691,10 @@ pub mod piron_stable_yield {
         let held = &mut pool.instruments[index as usize];
         held.coupons_paid += 1;
         held.next_coupon_due_date = held.next_coupon_due_date.saturating_add(period as i64);
-        pool.total_nav = add(pool.total_nav, amount)?;
+        // The accrual the mark was carrying has become cash. Recomputing nets the two
+        // rather than adding the coupon on top of an accrual already counted.
+        let now = clock_now()?;
+        refresh_nav(&mut pool, ctx.accounts.vault.amount + amount, now)?;
         drop(pool);
 
         emit!(CouponRecorded { pool: ctx.accounts.pool.key(), index, amount });
@@ -660,11 +725,47 @@ const EMPTY_REQUEST: piron_core::stable_yield::types::WithdrawalRequest =
 /// Queued exits burned their shares the moment they asked to leave, so the cash owed to
 /// them belongs to no current share. Pricing against the gross assets would hand the
 /// leavers' money to whoever remained, and charge the next depositor for it.
-fn net_nav(pool: &StableYieldPool, queue: &WithdrawalQueue) -> Result<i128> {
+fn net_nav(
+    pool: &StableYieldPool,
+    queue: &WithdrawalQueue,
+    vault_amount: u64,
+    now: u64,
+) -> Result<i128> {
     if queue.pool != pool_key_of(pool) {
         return Err(local(code::WRONG_QUEUE));
     }
-    Ok(pool.total_nav as i128 - queue.total_pending_value as i128)
+    Ok(gross_nav(pool, vault_amount, now)? - queue.total_pending_value as i128)
+}
+
+/// What the pool holds, marked to model.
+///
+/// Three lines: instruments at today's value, cash in the vault, and capital in flight
+/// with the SPV. Computed on every read rather than carried as a running total — a
+/// counter only moves when somebody calls something, so a pool holding a bill that
+/// accretes daily would price flat for the whole term and then jump at settlement,
+/// handing the term's yield to whoever happened to be holding at that moment.
+fn gross_nav(pool: &StableYieldPool, vault_amount: u64, now: u64) -> Result<i128> {
+    let mut total = vault_amount as i128 + pool.in_flight as i128;
+    for held in pool.instruments[..pool.instrument_count as usize].iter() {
+        if held.is_active != 0 {
+            // One at a time: thirty-two core holdings at once would not fit the 4KB
+            // frame a Solana instruction gets.
+            let value = nav::instrument_value(&held.to_core(), now).map_err(map_err)?;
+            total = total
+                .checked_add(value)
+                .ok_or_else(|| map_err(piron_core::Error::Overflow))?;
+        }
+    }
+    Ok(total)
+}
+
+/// Refreshes the stored mirror of NAV.
+///
+/// Solana has no view functions, so indexers read the account. The field is written from
+/// the same computation the program prices against, so the two cannot drift.
+fn refresh_nav(pool: &mut StableYieldPool, vault_amount: u64, now: u64) -> Result<()> {
+    pool.total_nav = to_u64(gross_nav(pool, vault_amount, now)?).map_err(map_err)?;
+    Ok(())
 }
 
 fn pool_key_of(pool: &StableYieldPool) -> Pubkey {
@@ -806,6 +907,9 @@ impl<'info> SpvMovesFunds<'info> {
 pub struct Authority<'info> {
     #[account(mut, seeds = [seeds::POOL, &pool_id.to_le_bytes()], bump)]
     pub pool: AccountLoader<'info, StableYieldPool>,
+    /// Read only, for the NAV mirror.
+    #[account(seeds = [seeds::VAULT, pool.key().as_ref()], bump)]
+    pub vault: Box<Account<'info, TokenAccount>>,
     pub authority: Signer<'info>,
 }
 
@@ -816,6 +920,9 @@ pub struct Authority<'info> {
 pub struct Operator<'info> {
     #[account(mut, seeds = [seeds::POOL, &pool_id.to_le_bytes()], bump)]
     pub pool: AccountLoader<'info, StableYieldPool>,
+    /// Read only, for the NAV mirror.
+    #[account(seeds = [seeds::VAULT, pool.key().as_ref()], bump)]
+    pub vault: Box<Account<'info, TokenAccount>>,
     pub operator: Signer<'info>,
 }
 
@@ -849,6 +956,9 @@ pub struct RequestWithdrawal<'info> {
     pub pool: AccountLoader<'info, StableYieldPool>,
     #[account(mut)]
     pub queue: AccountLoader<'info, WithdrawalQueue>,
+    /// Read only: the quote is struck against marked value plus cash on hand.
+    #[account(seeds = [seeds::VAULT, pool.key().as_ref()], bump)]
+    pub vault: Box<Account<'info, TokenAccount>>,
     #[account(mut, seeds = [seeds::SHARE_MINT, pool.key().as_ref()], bump)]
     pub share_mint: Box<Account<'info, Mint>>,
     /// Read, not trusted: the quote is struck against the balance the holder actually has.
@@ -868,6 +978,28 @@ impl<'info> RequestWithdrawal<'info> {
             authority: self.holder.to_account_info(),
         })
     }
+}
+
+#[derive(Accounts)]
+#[instruction(pool_id: u64)]
+pub struct RegisterHolder<'info> {
+    #[account(seeds = [seeds::POOL, &pool_id.to_le_bytes()], bump)]
+    pub pool: AccountLoader<'info, StableYieldPool>,
+    #[account(init_if_needed, payer = holder, space = HolderRecord::LEN,
+              seeds = [seeds::HOLDER, pool.key().as_ref(), holder.key().as_ref()], bump)]
+    pub holder_record: Box<Account<'info, HolderRecord>>,
+    #[account(mut)]
+    pub holder: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(pool_id: u64)]
+pub struct RefreshNav<'info> {
+    #[account(mut, seeds = [seeds::POOL, &pool_id.to_le_bytes()], bump)]
+    pub pool: AccountLoader<'info, StableYieldPool>,
+    #[account(seeds = [seeds::VAULT, pool.key().as_ref()], bump)]
+    pub vault: Box<Account<'info, TokenAccount>>,
 }
 
 #[derive(Accounts)]
@@ -961,4 +1093,6 @@ impl<'info> Withdraw<'info> {
 #[event] pub struct WithdrawalRequested { pub pool: Pubkey, pub owner: Pubkey, pub request_id: u64, pub shares: u64 }
 #[event] pub struct WithdrawalsProcessed { pub pool: Pubkey, pub processed: u32, pub total_paid: u64, pub new_head: u64, pub stopped_for_liquidity: bool }
 #[event] pub struct Withdrawn { pub pool: Pubkey, pub owner: Pubkey, pub shares: u64, pub assets: u64 }
+#[event] pub struct HolderRegistered { pub pool: Pubkey, pub holder: Pubkey }
+#[event] pub struct NavRefreshed { pub pool: Pubkey, pub total_nav: u64 }
 #[event] pub struct CouponRecorded { pub pool: Pubkey, pub index: u32, pub amount: u64 }

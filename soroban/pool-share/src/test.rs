@@ -1,6 +1,6 @@
 //! Contract tests for the share token.
 
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{Address, Env, String};
 
 use super::*;
@@ -180,4 +180,23 @@ fn an_emptied_balance_leaves_nothing_behind() {
     f.client.transfer(&f.alice, &f.bob, &1_000);
     assert_eq!(f.client.balance(&f.alice), 0);
     assert_eq!(f.client.balance(&f.bob), 1_000);
+}
+
+/// M4. The SEP-41 expiry is honoured. Before the fix it was accepted and discarded, so
+/// every approval was permanent behind a signature that granted a temporary one.
+#[test]
+fn an_approval_stops_working_at_the_ledger_it_names() {
+    let f = setup();
+    f.client.mint(&f.alice, &1_000);
+
+    let expires = f.env.ledger().sequence() + 10;
+    f.client.approve(&f.alice, &f.bob, &500, &expires);
+    assert_eq!(f.client.allowance(&f.alice, &f.bob), 500);
+
+    f.env.ledger().set_sequence_number(expires + 1);
+    assert_eq!(f.client.allowance(&f.alice, &f.bob), 0, "the approval outlived its ledger");
+    assert_eq!(
+        f.client.try_transfer_from(&f.bob, &f.alice, &f.bob, &100),
+        Err(Ok(Error::InsufficientAllowance))
+    );
 }
