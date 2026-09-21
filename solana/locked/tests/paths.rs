@@ -568,3 +568,4 @@ fn positions_in_different_tiers_keep_their_own_terms() {
     // 30 days of 20% on 1,000,000 is 16,438.
     assert_eq!(token_balance(&svm, &acc), 1_000_328 + 1_016_438);
 }
+

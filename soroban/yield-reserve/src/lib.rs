@@ -38,6 +38,8 @@ pub enum Error {
     Unauthorized = 701,
     AlreadyBound = 715,
     NothingToSweep = 716,
+    PoolEscrowNotSet = 717,
+    WrongRecipient = 718,
 }
 
 impl From<piron_core::Error> for Error {
@@ -86,6 +88,8 @@ pub enum DataKey {
     Loan(Address),
     /// Managers permitted to draw on the reserve.
     Source(Address),
+    /// The escrow money for a given pool may be sent to.
+    PoolEscrow(Address),
 }
 
 #[contractclient(name = "AccessClient")]
@@ -100,6 +104,13 @@ pub struct YieldReceived {
     pub amount: i128,
     pub to_treasury: i128,
     pub retained: i128,
+}
+
+#[contractevent]
+pub struct PoolEscrowSet {
+    #[topic]
+    pub pool: Address,
+    pub escrow: Address,
 }
 
 #[contractevent]
@@ -208,6 +219,11 @@ impl YieldReserve {
     // ------------------------------------------------------------ lending
 
     /// Lends to a pool that owes a redemption before its capital has come back.
+    ///
+    /// `recipient` must be the escrow registered for `pool`. Taking the destination from
+    /// the caller while booking the debt against a pool would let an operator lend to one
+    /// address and charge another, which is the one thing a segregated reserve exists to
+    /// prevent.
     pub fn loan_to_pool(
         env: Env,
         caller: Address,
@@ -216,6 +232,7 @@ impl YieldReserve {
         amount: i128,
     ) -> Result<(), Error> {
         Self::require(&env, &caller, Role::Operator)?;
+        Self::require_pool_escrow(&env, &pool, &recipient)?;
 
         let stats = Self::stats(&env);
         let config = Self::config(&env)?;
@@ -309,6 +326,7 @@ impl YieldReserve {
         amount: i128,
     ) -> Result<(), Error> {
         Self::require(&env, &caller, Role::Operator)?;
+        Self::require_pool_escrow(&env, &pool, &recipient)?;
 
         let mut stats = Self::stats(&env);
         reserve::validate_shortfall_cover(amount, &Self::to_core(&stats))?;
@@ -513,6 +531,34 @@ impl YieldReserve {
     }
 
     /// A manager or escrow the admin has permitted to move money in and out.
+    /// Names the escrow that money for `pool` may be sent to. Admin only.
+    pub fn set_pool_escrow(
+        env: Env,
+        caller: Address,
+        pool: Address,
+        escrow: Address,
+    ) -> Result<(), Error> {
+        Self::require(&env, &caller, Role::DefaultAdmin)?;
+        env.storage()
+            .persistent()
+            .set(&DataKey::PoolEscrow(pool.clone()), &escrow);
+        PoolEscrowSet { pool, escrow }.publish(&env);
+        Ok(())
+    }
+
+    pub fn pool_escrow(env: Env, pool: Address) -> Option<Address> {
+        env.storage().persistent().get(&DataKey::PoolEscrow(pool))
+    }
+
+    /// Refuses to pay anywhere but the escrow registered for the pool being charged.
+    fn require_pool_escrow(env: &Env, pool: &Address, recipient: &Address) -> Result<(), Error> {
+        match Self::pool_escrow(env.clone(), pool.clone()) {
+            Some(escrow) if escrow == *recipient => Ok(()),
+            Some(_) => Err(Error::WrongRecipient),
+            None => Err(Error::PoolEscrowNotSet),
+        }
+    }
+
     fn require_source(env: &Env, caller: &Address) -> Result<(), Error> {
         caller.require_auth();
         env.storage()

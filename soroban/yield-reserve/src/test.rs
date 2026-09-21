@@ -78,7 +78,10 @@ fn setup_with(floor: i128, treasury_bps: u32) -> Fixture {
 }
 
 fn setup() -> Fixture {
-    setup_with(100_000, 3_000)
+    let f = setup_with(100_000, 3_000);
+    // Money for a pool may only be sent to that pool's registered escrow.
+    f.client.set_pool_escrow(&f.admin, &f.pool, &f.manager);
+    f
 }
 
 /// Fills the reserve with `retained` net of the treasury split.
@@ -129,12 +132,13 @@ fn the_reserve_lends_only_above_its_floor() {
     assert_eq!(f.client.available_for_loan(), 600_000);
     assert_eq!(
         f.client
-            .try_loan_to_pool(&f.operator, &f.pool, &f.pool, &600_001),
+            .try_loan_to_pool(&f.operator, &f.pool, &f.manager, &600_001),
         Err(Ok(Error::ReserveFloorBreached))
     );
 
-    f.client.loan_to_pool(&f.operator, &f.pool, &f.pool, &600_000);
-    assert_eq!(f.token.balance(&f.pool), 600_000);
+    let before = f.token.balance(&f.manager);
+    f.client.loan_to_pool(&f.operator, &f.pool, &f.manager, &600_000);
+    assert_eq!(f.token.balance(&f.manager) - before, 600_000);
     assert_eq!(f.client.loan_of(&f.pool), 600_000);
     assert_eq!(f.client.available_for_loan(), 0);
 }
@@ -145,7 +149,7 @@ fn only_an_operator_lends() {
     fund(&f, 1_000_000);
     assert!(f
         .client
-        .try_loan_to_pool(&f.outsider, &f.pool, &f.pool, &1_000)
+        .try_loan_to_pool(&f.outsider, &f.pool, &f.manager, &1_000)
         .is_err());
 }
 
@@ -182,6 +186,7 @@ fn loans_are_tracked_per_pool() {
     fund(&f, 1_000_000);
     let other = Address::generate(&f.env);
     f.client.loan_to_pool(&f.operator, &f.pool, &f.manager, &100_000);
+    f.client.set_pool_escrow(&f.admin, &other, &f.manager);
     f.client.loan_to_pool(&f.operator, &other, &f.manager, &200_000);
 
     assert_eq!(f.client.loan_of(&f.pool), 100_000);
@@ -197,11 +202,13 @@ fn covering_a_shortfall_may_go_below_the_floor() {
     // would be backwards.
     let f = setup();
     fund(&f, 1_000_000);
-    let investor = Address::generate(&f.env);
 
+    // The cover lands in the pool's escrow, which is what distributes it. Paying an
+    // address the caller names would put protocol money outside the segregated system.
+    let before = f.token.balance(&f.manager);
     f.client
-        .cover_shortfall(&f.operator, &f.pool, &investor, &650_000);
-    assert_eq!(f.token.balance(&investor), 650_000);
+        .cover_shortfall(&f.operator, &f.pool, &f.manager, &650_000);
+    assert_eq!(f.token.balance(&f.manager) - before, 650_000);
 
     let stats = f.client.stats_of();
     assert_eq!(stats.balance, 50_000); // below the 100,000 floor, deliberately
@@ -215,7 +222,7 @@ fn a_shortfall_larger_than_the_reserve_is_refused() {
     fund(&f, 1_000_000);
     assert_eq!(
         f.client
-            .try_cover_shortfall(&f.operator, &f.pool, &f.pool, &700_001),
+            .try_cover_shortfall(&f.operator, &f.pool, &f.manager, &700_001),
         Err(Ok(Error::InsufficientReserve))
     );
 }
@@ -299,6 +306,7 @@ fn a_split_over_a_hundred_percent_is_refused() {
 #[test]
 fn the_full_cycle_leaves_the_books_balanced() {
     let f = setup_with(0, 0);
+    f.client.set_pool_escrow(&f.admin, &f.pool, &f.manager);
     fund(&f, 1_000_000);
 
     // Lend, absorb a loss, get repaid, sweep what is left.
@@ -315,4 +323,34 @@ fn the_full_cycle_leaves_the_books_balanced() {
     assert_eq!(f.client.sweep_to_treasury(&f.operator), 900_000);
     assert_eq!(f.client.stats_of().balance, 0);
     assert_eq!(f.token.balance(&f.treasury), 900_000);
+}
+
+/// H3. The reserve pays the escrow registered for the pool being charged, never an
+/// address the caller supplies. Before the fix an operator could book a loan against one
+/// pool and send the cash anywhere.
+#[test]
+fn money_cannot_be_sent_anywhere_but_the_pools_own_escrow() {
+    let f = setup();
+    fund(&f, 1_000_000);
+    let elsewhere = Address::generate(&f.env);
+
+    assert_eq!(
+        f.client
+            .try_loan_to_pool(&f.operator, &f.pool, &elsewhere, &100_000),
+        Err(Ok(Error::WrongRecipient))
+    );
+    assert_eq!(
+        f.client
+            .try_cover_shortfall(&f.operator, &f.pool, &elsewhere, &100_000),
+        Err(Ok(Error::WrongRecipient))
+    );
+    assert_eq!(f.token.balance(&elsewhere), 0);
+
+    // A pool with no escrow on record cannot be lent to at all.
+    let unknown = Address::generate(&f.env);
+    assert_eq!(
+        f.client
+            .try_loan_to_pool(&f.operator, &unknown, &f.manager, &100_000),
+        Err(Ok(Error::PoolEscrowNotSet))
+    );
 }

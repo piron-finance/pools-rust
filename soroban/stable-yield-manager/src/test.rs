@@ -652,3 +652,36 @@ fn cash_owed_to_the_queue_is_not_the_spvs_to_draw() {
     assert_eq!(f.client.process_withdrawals(&f.admin, &10), 1);
     assert_eq!(f.token.balance(&f.alice), 1_000_000 + 895_500);
 }
+
+/// M1. A transferee has never deposited, so reading a missing record as zero waved them
+/// straight past the holding period. They must now register, which starts their clock.
+#[test]
+fn arriving_by_transfer_is_not_a_way_round_the_holding_period() {
+    let f = setup();
+    f.client.deposit(&f.alice, &1_000_000);
+
+    let carol = Address::generate(&f.env);
+    let shares = pool_share::PoolShareClient::new(&f.env, &f.client.share_token());
+    shares.transfer(&f.alice, &carol, &400_000);
+
+    // No record at all: refused rather than waved through.
+    assert_eq!(
+        f.client.try_request_withdrawal(&carol, &100_000),
+        Err(Ok(Error::NotRegistered))
+    );
+
+    f.client.register_holder(&carol);
+    assert_eq!(
+        f.client.try_register_holder(&carol),
+        Err(Ok(Error::AlreadyRegistered))
+    );
+
+    // Registering starts the clock; it does not skip it.
+    assert_eq!(
+        f.client.try_request_withdrawal(&carol, &100_000),
+        Err(Ok(Error::HoldingPeriodNotMet))
+    );
+
+    f.env.ledger().set_timestamp(START + 8 * DAY);
+    f.client.request_withdrawal(&carol, &100_000);
+}

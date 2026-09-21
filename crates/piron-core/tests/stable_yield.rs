@@ -395,3 +395,44 @@ fn a_request_past_its_deadline_is_expired() {
     r.deadline = 0;
     assert!(!queue::is_expired(&r, u64::MAX));
 }
+
+/// M2. A coupon the SPV never pays is late, not larger. Before the cap, accrual carried
+/// on past the due date and NAV counted income that had not arrived.
+#[test]
+fn an_unpaid_coupon_stops_accruing_at_its_due_date() {
+    let i = interest_bearing();
+    // One full quarter is 20,000 of the 8% annual coupon.
+    let at_due = nav::instrument_value(&i, PURCHASE + YEAR / 4).unwrap();
+    assert_eq!(at_due, 1_020_000);
+
+    // Nothing is paid, and another two quarters pass. The mark does not grow.
+    assert_eq!(
+        nav::instrument_value(&i, PURCHASE + YEAR / 2).unwrap(),
+        at_due,
+        "an unpaid coupon went on accruing"
+    );
+    assert_eq!(
+        nav::instrument_value(&i, PURCHASE + (3 * YEAR) / 4).unwrap(),
+        at_due
+    );
+}
+
+/// L2. A tier's term is bounded, like its APY and its penalty.
+#[test]
+fn a_tier_cannot_lock_capital_past_the_ceiling() {
+    use piron_core::locked::validate::{validate_tier, MAX_TIER_DURATION_DAYS};
+    use piron_core::locked::types::LockTier;
+
+    let tier = |days: u32| LockTier {
+        duration_days: days,
+        apy_bps: 1_200,
+        early_exit_penalty_bps: 500,
+        min_deposit: 1_000,
+        is_active: true,
+    };
+    assert!(validate_tier(&tier(MAX_TIER_DURATION_DAYS)).is_ok());
+    assert_eq!(
+        validate_tier(&tier(MAX_TIER_DURATION_DAYS + 1)),
+        Err(Error::InvalidTierDuration)
+    );
+}

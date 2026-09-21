@@ -217,6 +217,8 @@ pub trait Escrow {
     fn take(env: Env, from: Address, amount: i128);
     fn release(env: Env, to: Address, amount: i128);
     fn balance(env: Env) -> i128;
+    /// Credits tokens that reached the escrow without passing through `take`.
+    fn sync_untracked(env: Env) -> i128;
 }
 
 // ---------------------------------------------------------------- events
@@ -659,6 +661,11 @@ impl LockedPoolManager {
             &Self::escrow_address(env)?,
             &amount,
         );
+        // The reserve transfers straight to the escrow address rather than through
+        // `take`, so the escrow does not know the money has arrived. Crediting it here
+        // is what makes a loan spendable — and keeps the credit a deliberate act tied to
+        // a borrow rather than anything that lands at the address.
+        Self::escrow(env)?.sync_untracked();
 
         let owed = Self::pool_debt(env.clone()).saturating_add(amount);
         env.storage().instance().set(&DataKey::Debt, &owed);

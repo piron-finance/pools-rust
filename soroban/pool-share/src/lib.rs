@@ -30,6 +30,7 @@ pub enum Error {
     Unauthorized = 701,
     InsufficientBalance = 717,
     InsufficientAllowance = 718,
+    AllowanceExpired = 719,
     AlreadyBound = 715,
 }
 
@@ -145,19 +146,29 @@ impl PoolShare {
         Self::move_shares(&env, &from, &to, amount)
     }
 
+    /// SEP-41 approval, expiring at `expiration_ledger`.
+    ///
+    /// The expiry is honoured rather than discarded: a caller who sets one is stating
+    /// when the allowance should stop working, and an implementation that ignores it
+    /// leaves a permanent approval behind a signature that did not grant one.
     pub fn approve(
         env: Env,
         from: Address,
         spender: Address,
         amount: i128,
-        _expiration_ledger: u32,
+        expiration_ledger: u32,
     ) -> Result<(), Error> {
         from.require_auth();
         if amount < 0 {
             return Err(Error::InvalidAmount);
         }
+        if amount > 0 && expiration_ledger < env.ledger().sequence() {
+            return Err(Error::AllowanceExpired);
+        }
         let key = DataKey::Allowance(from.clone(), spender.clone());
-        env.storage().persistent().set(&key, &amount);
+        env.storage()
+            .persistent()
+            .set(&key, &(amount, expiration_ledger));
         env.storage().persistent().extend_ttl(
             &key,
             ttl::PERSISTENT_THRESHOLD_LEDGERS,
@@ -172,11 +183,17 @@ impl PoolShare {
         Ok(())
     }
 
+    /// What `spender` may still move, zero once the approval's ledger has passed.
     pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
-        env.storage()
+        let (amount, expires): (i128, u32) = env
+            .storage()
             .persistent()
             .get(&DataKey::Allowance(from, spender))
-            .unwrap_or(0)
+            .unwrap_or((0, 0));
+        if amount > 0 && expires < env.ledger().sequence() {
+            return 0;
+        }
+        amount
     }
 
     pub fn balance(env: Env, id: Address) -> i128 {
@@ -279,14 +296,18 @@ impl PoolShare {
         spender: &Address,
         amount: i128,
     ) -> Result<(), Error> {
+        let key = DataKey::Allowance(from.clone(), spender.clone());
         let allowed = Self::allowance(env.clone(), from.clone(), spender.clone());
         if allowed < amount {
             return Err(Error::InsufficientAllowance);
         }
-        env.storage().persistent().set(
-            &DataKey::Allowance(from.clone(), spender.clone()),
-            &(allowed - amount),
-        );
+        let expires: u32 = env
+            .storage()
+            .persistent()
+            .get::<_, (i128, u32)>(&key)
+            .map(|(_, e)| e)
+            .unwrap_or(0);
+        env.storage().persistent().set(&key, &(allowed - amount, expires));
         Ok(())
     }
 

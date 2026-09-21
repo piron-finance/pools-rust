@@ -172,6 +172,7 @@ pub fn open_pool(svm: &mut LiteSVM, tweak: impl FnOnce(&mut PoolTerms)) -> Pool 
 
     let mut terms = PoolTerms {
         spv: spv.pubkey(),
+        treasury: treasury.pubkey(),
         instrument_type: 0,
         purchase_price: TARGET,
         target_raise: TARGET,

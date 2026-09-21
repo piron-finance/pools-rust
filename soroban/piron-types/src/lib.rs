@@ -122,6 +122,13 @@ pub struct StoredState {
 pub struct StoredUser {
     pub deposit_time: u64,
     pub coupons_claimed: i128,
+    /// Shares subscribed through this pool.
+    ///
+    /// Coupon entitlement is struck on this, not on the holder's live share balance. A
+    /// balance is a number anyone can move between addresses, and an entitlement derived
+    /// from it resets every time it moves — so the same coupon could be claimed once per
+    /// address the shares passed through. This figure only the manager writes.
+    pub shares: i128,
 }
 
 // ---------------------------------------------------------------- locked

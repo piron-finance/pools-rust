@@ -459,3 +459,51 @@ fn a_holder_who_waits_gets_the_same_price_as_one_who_rushes() {
     assert_eq!(token_balance(&svm, &aa), token_balance(&svm, &ba));
     assert_eq!(token_balance(&svm, &aa), 447_750_000);
 }
+
+// ---- AUDIT PROBE: coupon double-claim via share transfer ----
+#[test]
+fn probe_coupon_double_claim() {
+    let mut svm = LiteSVM::new();
+    let p = open_pool(&mut svm, |t| {
+        t.instrument_type = 1;
+        t.coupon_count = 1;
+        t.coupon_dates[0] = 40_000;
+        t.coupon_rates[0] = 300;
+    });
+    let (alice, aa, a_s) = holder_with(&mut svm, &p, 500_000_000);
+    let (bob, ba, b_s) = holder_with(&mut svm, &p, 500_000_000);
+    deposit(&mut svm, &p, &alice, aa, a_s, 500_000_000).expect("alice");
+    deposit(&mut svm, &p, &bob, ba, b_s, 500_000_000).expect("bob");
+    close_epoch(&mut svm, &p, &p.authority, true).expect("close");
+    withdraw_for_investment(&mut svm, &p, &p.spv, TARGET).expect("draw");
+    confirm_investment(&mut svm, &p, &p.authority, TARGET).expect("confirm");
+
+    // One coupon of 200,000,000 arrives and is distributed.
+    mint_to(&mut svm, &p.authority, &p.authority, &p.asset, &p.spv_asset, 200_000_000);
+    record_coupon(&mut svm, &p, &p.spv, 200_000_000).expect("coupon");
+    distribute_coupons(&mut svm, &p, &p.authority).expect("distribute");
+
+    let vault_before = token_balance(&svm, &p.vault);
+    claim_coupon(&mut svm, &p, &alice, aa, a_s).expect("alice claims her half");
+    let alice_got = token_balance(&svm, &aa);
+
+    // Alice sends her shares to Bob, who is also a depositor and so has a position.
+    let ix = spl_token::instruction::transfer(
+        &spl_token::ID, &a_s, &b_s, &alice.pubkey(), &[], 500_000_000).unwrap();
+    send(&mut svm, &alice, &[], ix).expect("transfer");
+
+    let r = claim_coupon(&mut svm, &p, &bob, ba, b_s);
+    let bob_got = token_balance(&svm, &ba);
+    let vault_after = token_balance(&svm, &p.vault);
+
+    println!("coupon        = 200000000");
+    println!("alice claimed = {alice_got}");
+    println!("bob result    = {r:?}");
+    println!("bob claimed   = {bob_got}");
+    println!("vault paid    = {}", vault_before - vault_after);
+    assert!(
+        alice_got + bob_got <= 200_000_000,
+        "PAID {} FOR A 200000000 COUPON", alice_got + bob_got
+    );
+}
+

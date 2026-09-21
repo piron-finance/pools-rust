@@ -104,6 +104,8 @@ pub enum Error {
     ProtocolPaused = 614,
     UnknownRole = 615,
     UnknownFeeType = 616,
+    /// The address holds shares but has never opened a holding record.
+    NotRegistered = 626,
     UpgradeDelayNotElapsed = 617,
     UpgradeExpired = 618,
     UpgradeAlreadyExecuted = 619,
@@ -233,6 +235,12 @@ pub struct Deposit {
     pub assets: i128,
     pub shares: i128,
     pub nav_per_share: i128,
+}
+
+#[contractevent]
+pub struct HolderRegistered {
+    #[topic]
+    pub holder: Address,
 }
 
 #[contractevent]
@@ -401,11 +409,15 @@ impl StableYieldManager {
         let held = Self::held_by(&env, &owner);
         validate::validate_withdrawal_request(shares, held)?;
 
+        // Shares can arrive by transfer, and a transferee has never deposited. Reading a
+        // missing record as zero made the holding period trivially avoidable: move the
+        // shares to a fresh address and leave at once. An address with no record must
+        // register first, which starts its clock.
         let deposit_time: u64 = env
             .storage()
             .persistent()
             .get(&DataKey::DepositTime(owner.clone()))
-            .unwrap_or(0);
+            .ok_or(Error::NotRegistered)?;
         validate::validate_holding_period(
             deposit_time,
             config.holding_period,
@@ -457,6 +469,25 @@ impl StableYieldManager {
         }
         .publish(&env);
         Ok(index)
+    }
+
+    /// Opens a holding record for an address that received shares by transfer.
+    ///
+    /// The clock starts here rather than at zero, so arriving by transfer is not a way
+    /// around the holding period.
+    pub fn register_holder(env: Env, holder: Address) -> Result<(), Error> {
+        holder.require_auth();
+        bump_instance(&env);
+
+        let key = DataKey::DepositTime(holder.clone());
+        if env.storage().persistent().has(&key) {
+            return Err(Error::AlreadyRegistered);
+        }
+        env.storage()
+            .persistent()
+            .set(&key, &env.ledger().timestamp());
+        HolderRegistered { holder }.publish(&env);
+        Ok(())
     }
 
     /// Settles up to `max_items` queued exits, in order, from free cash.
@@ -514,9 +545,11 @@ impl StableYieldManager {
         let outcome = queue::process_batch(&slice, &requests_buf[..loaded], available, take)?;
 
         // Pay out and settle each request the batch covered.
+        // By queue position, not payment number: `new_head` also steps over entries that
+        // were already served, which `processed` does not count, so indexing by payment
+        // would shift every payout by one the moment the head rested on a served entry.
         let escrow = Self::escrow(&env)?;
-        for i in 0..outcome.processed as u64 {
-            let index = head + i;
+        for index in head..outcome.new_head {
             if let Some(mut stored) = read_request(&env, index) {
                 if stored.processed {
                     continue;

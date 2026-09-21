@@ -13,9 +13,15 @@ use crate::BASIS_POINTS;
 /// A guard against fat-fingered tier configuration, not an economic view.
 pub const MAX_TIER_BPS: u32 = 5_000;
 
+/// Longest term a tier may offer: ten years.
+///
+/// Same purpose as the bps ceilings — a guard against a mistyped tier locking capital
+/// past any horizon the protocol plans for, not a view on what terms are sensible.
+pub const MAX_TIER_DURATION_DAYS: u32 = 3_650;
+
 /// Checks a tier is offerable.
 pub fn validate_tier(tier: &LockTier) -> Result<(), Error> {
-    if tier.duration_days == 0 {
+    if tier.duration_days == 0 || tier.duration_days > MAX_TIER_DURATION_DAYS {
         return Err(Error::InvalidTierDuration);
     }
     if tier.apy_bps > MAX_TIER_BPS {

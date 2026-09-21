@@ -50,6 +50,11 @@ pub struct FundsReceived {
 }
 
 #[contractevent]
+pub struct UntrackedSynced {
+    pub amount: i128,
+}
+
+#[contractevent]
 pub struct FundsReleased {
     #[topic]
     pub to: Address,
@@ -124,7 +129,9 @@ impl PoolEscrow {
 
         let asset = Self::asset(&env)?;
         let client = token::Client::new(&env, &asset);
-        if client.balance(&env.current_contract_address()) < amount {
+        // Against the tracked figure, not the raw balance: untracked tokens are not the
+        // pool's to spend until they have been credited.
+        if Self::balance(env.clone())? < amount {
             return Err(Error::InsufficientBalance);
         }
         client.transfer(&env.current_contract_address(), &to, &amount);
@@ -138,10 +145,45 @@ impl PoolEscrow {
         Ok(())
     }
 
-    /// What the escrow currently holds.
+    /// What the escrow holds on the protocol's books.
+    ///
+    /// Deliberately the tracked figure — everything that came in through `take` less
+    /// everything released — and not the token balance. NAV is struck on this, so a raw
+    /// balance would let anyone move the price of a pool by transferring tokens straight
+    /// to the address: seed a new pool with the minimum, donate to push the price up, and
+    /// later depositors round down to fewer shares. Tokens that arrive that way are
+    /// invisible here until someone credits them deliberately with `sync_untracked`.
     pub fn balance(env: Env) -> Result<i128, Error> {
+        let tracked = Self::total_in(env.clone())
+            .checked_sub(Self::total_out(env.clone()))
+            .ok_or(Error::InsufficientBalance)?;
+        Ok(tracked.max(0))
+    }
+
+    /// Tokens sitting at this address that never came through `take`.
+    pub fn untracked(env: Env) -> Result<i128, Error> {
         let asset = Self::asset(&env)?;
-        Ok(token::Client::new(&env, &asset).balance(&env.current_contract_address()))
+        let held = token::Client::new(&env, &asset).balance(&env.current_contract_address());
+        Ok((held - Self::balance(env.clone())?).max(0))
+    }
+
+    /// Credits an untracked balance to the pool. Manager only.
+    ///
+    /// A donation, a misdirected transfer or a token airdrop is not free money until
+    /// somebody decides it is. This makes that a deliberate act with an event attached
+    /// rather than a silent move in the share price.
+    pub fn sync_untracked(env: Env) -> Result<i128, Error> {
+        Self::require_manager(&env)?;
+        let found = Self::untracked(env.clone())?;
+        if found <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        let total: i128 = env.storage().instance().get(&DataKey::TotalIn).unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalIn, &(total + found));
+        UntrackedSynced { amount: found }.publish(&env);
+        Ok(found)
     }
 
     pub fn total_in(env: Env) -> i128 {

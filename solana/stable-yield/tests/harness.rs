@@ -246,7 +246,8 @@ pub fn load_pool(svm: &LiteSVM, pool: &Pubkey) -> piron_stable_yield_solana::sta
 
 pub fn add_instrument(svm: &mut LiteSVM, p: &Pool, caller: &Keypair,
                       terms: piron_stable_yield_solana::InstrumentTerms) -> Result<(), String> {
-    let o = piron_stable_yield_solana::accounts::Operator { pool: p.pool, operator: caller.pubkey() };
+    let o = piron_stable_yield_solana::accounts::Operator {
+        pool: p.pool, vault: p.vault, operator: caller.pubkey() };
     send(svm, caller, &[], ix(p.program, o.to_account_metas(None),
         piron_stable_yield_solana::instruction::AddInstrument { pool_id: POOL_ID, instrument: terms }.data()))
 }
@@ -270,7 +271,8 @@ pub fn mature_instrument(svm: &mut LiteSVM, p: &Pool, index: u32, proceeds: u64)
 }
 
 pub fn write_off(svm: &mut LiteSVM, p: &Pool, caller: &Keypair, index: u32) -> Result<(), String> {
-    let a = piron_stable_yield_solana::accounts::Authority { pool: p.pool, authority: caller.pubkey() };
+    let a = piron_stable_yield_solana::accounts::Authority {
+        pool: p.pool, vault: p.vault, authority: caller.pubkey() };
     send(svm, caller, &[], ix(p.program, a.to_account_metas(None),
         piron_stable_yield_solana::instruction::WriteOffInstrument { pool_id: POOL_ID, index }.data()))
 }
@@ -281,7 +283,7 @@ pub fn holder_record(p: &Pool, owner: &Pubkey) -> Pubkey {
 
 pub fn request_withdrawal(svm: &mut LiteSVM, p: &Pool, who: &Keypair, shares_acc: Pubkey, shares: u64) -> Result<(), String> {
     let r = piron_stable_yield_solana::accounts::RequestWithdrawal {
-        pool: p.pool, queue: p.queue, share_mint: p.share_mint,
+        pool: p.pool, queue: p.queue, vault: p.vault, share_mint: p.share_mint,
         holder_shares: shares_acc, holder_record: holder_record(p, &who.pubkey()),
         holder: who.pubkey(), token_program: spl_token::ID,
     };
@@ -395,4 +397,19 @@ pub fn price(svm: &LiteSVM, p: &Pool) -> i128 {
 pub fn mint_supply(svm: &LiteSVM, mint: &Pubkey) -> u64 {
     let raw = svm.get_account(mint).unwrap();
     u64::from_le_bytes(raw.data[36..44].try_into().unwrap())
+}
+
+pub fn refresh_nav(svm: &mut LiteSVM, p: &Pool) -> Result<(), String> {
+    let r = piron_stable_yield_solana::accounts::RefreshNav { pool: p.pool, vault: p.vault };
+    send(svm, &p.authority, &[], ix(p.program, r.to_account_metas(None),
+        piron_stable_yield_solana::instruction::RefreshNavMirror { pool_id: POOL_ID }.data()))
+}
+
+pub fn register_holder(svm: &mut LiteSVM, p: &Pool, who: &Keypair) -> Result<(), String> {
+    let r = piron_stable_yield_solana::accounts::RegisterHolder {
+        pool: p.pool, holder_record: holder_record(p, &who.pubkey()),
+        holder: who.pubkey(), system_program: system_program::ID,
+    };
+    send(svm, who, &[], ix(p.program, r.to_account_metas(None),
+        piron_stable_yield_solana::instruction::RegisterHolder { pool_id: POOL_ID }.data()))
 }
