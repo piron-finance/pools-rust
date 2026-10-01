@@ -132,7 +132,7 @@ inheriting them from a callee.
 
 ---
 
-## SOL-4 · High · Nothing deploys these programs, and nothing sets their upgrade authority — **open**
+## SOL-4 · High · Nothing deployed these programs, and nothing set their upgrade authority — **fixed**
 
 **Where** absent: there is no `scripts/deploy_solana.sh`
 
@@ -153,18 +153,37 @@ The asymmetry is worth stating plainly: EVM routes every upgrade through a 72-ho
 with a guardian brake, Stellar binds the same timelock on every singleton contract, and
 Solana — as things stand — would ship three programs replaceable by one hot key.
 
-### Fix — not applied in this pass
+### Fix
 
-This is deployment tooling rather than program code, and it needs decisions I should not
-make unilaterally: which Squads multisig, which signer set, what delay, and whether the
-authority is eventually revoked outright once the programs settle. What I can say is that
-it belongs on the critical path for the production push, alongside:
+`scripts/deploy_solana.sh`, in the shape of the Stellar script beside it.
 
-- `solana program set-upgrade-authority` to the multisig for all three programs, verified
-  on chain afterwards rather than assumed
-- the queue account's rent payer and size, since the stable-yield queue is a client-created
-  22,600-byte account and whoever creates it funds it
-- a recorded program id per cluster, the way `deployments/` records Stellar's
+The Squads vault is **required up front**, not set afterwards: with no
+`PIRON_UPGRADE_AUTHORITY` the script refuses to deploy at all, because a program deployed
+and left with the deployer keypair is one hot key away from replacement, and "we will move
+it after" is exactly the step that gets skipped. The script also checks the vault account
+exists on the target cluster — an authority that is not there yet is not an authority.
+
+After transferring, it **reads the authority back from chain** and fails if it does not
+match. A `set-upgrade-authority` that silently did nothing would leave the deployer in
+control of programs everybody believes are behind a multisig, which is worse than a deploy
+that failed outright.
+
+Programs only, matching how EVM works: a pool is a PDA created by `initialize_pool` when
+an admin wants one, and the backend confirms it from the transaction rather than from a
+registry scan. Nothing here creates a pool.
+
+It also runs each program's tests against the built artefact before deploying, which the
+freshness guard in the harnesses makes meaningful — the binary that goes out is the one the
+tests passed against.
+
+Writes `deployments/solana-<cluster>.env` in the same key=value form as the Stellar script,
+so the backend's address registry can read both alike.
+
+**Still operational, and stated in the script's own closing output:** confirming the Squads
+signer set and delay policy is right (the script can check the vault exists, not that it is
+governed sensibly); creating the stable-yield queue account, which is 22,600 bytes and so
+must be client-created and rent-funded; and adding a Solana entry to the backend's
+`src/contracts/chains/` registry.
 
 ---
 
