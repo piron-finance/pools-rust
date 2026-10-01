@@ -40,6 +40,7 @@ pub enum Error {
     NothingToSweep = 716,
     PoolEscrowNotSet = 717,
     WrongRecipient = 718,
+    NothingToSync = 719,
 }
 
 impl From<piron_core::Error> for Error {
@@ -104,6 +105,12 @@ pub struct YieldReceived {
     pub amount: i128,
     pub to_treasury: i128,
     pub retained: i128,
+}
+
+#[contractevent]
+pub struct UntrackedSynced {
+    pub amount: i128,
+    pub balance: i128,
 }
 
 #[contractevent]
@@ -412,6 +419,45 @@ impl YieldReserve {
 
     pub fn stats_of(env: Env) -> Stats {
         Self::stats(&env)
+    }
+
+    /// Credits tokens that reached the reserve without passing through a tracked path.
+    ///
+    /// `receive_yield` is the only crediting inflow and it *pulls* from a registered
+    /// source. The fee manager pays the reserve's share of a distribution by pushing a
+    /// plain transfer, which no tracked path sees — so without this the money sits at the
+    /// address, invisible to every `balance` check that governs loans, deployments and
+    /// shortfall cover, and `receive_yield` cannot retroactively credit it.
+    ///
+    /// Permissionless on purpose: it only recognises funds already held, so there is
+    /// nothing to gain by calling it and real harm in the reserve sitting insolvent on
+    /// paper because nobody did.
+    pub fn sync_untracked(env: Env) -> Result<i128, Error> {
+        let asset = Self::asset(&env)?;
+        let held = token::Client::new(&env, &asset).balance(&env.current_contract_address());
+
+        let mut stats = Self::stats(&env);
+        if held <= stats.balance {
+            return Err(Error::NothingToSync);
+        }
+        let credited = held - stats.balance;
+        stats.balance = held;
+        Self::save(&env, &stats);
+
+        UntrackedSynced {
+            amount: credited,
+            balance: stats.balance,
+        }
+        .publish(&env);
+        Ok(credited)
+    }
+
+    /// Tokens at this address that no tracked path has credited.
+    pub fn untracked(env: Env) -> Result<i128, Error> {
+        let asset = Self::asset(&env)?;
+        let held = token::Client::new(&env, &asset).balance(&env.current_contract_address());
+        let stats = Self::stats(&env);
+        Ok((held - stats.balance).max(0))
     }
 
     pub fn available_for_loan(env: Env) -> Result<i128, Error> {

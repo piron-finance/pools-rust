@@ -555,7 +555,10 @@ pub struct ExitEarly<'info> {
     pub treasury_asset: Box<Account<'info, TokenAccount>>,
     /// The reserve's token account, and whoever may sign for it. Only touched when the
     /// vault cannot cover the exit.
-    #[account(mut)]
+    ///
+    /// Bound to the reserve the pool records. Unbound, the pool would book a debt to the
+    /// reserve for money supplied from somewhere else entirely.
+    #[account(mut, token::mint = pool.asset_mint, token::authority = pool.reserve)]
     pub reserve_asset: Box<Account<'info, TokenAccount>>,
     /// CHECK: compared against `pool.reserve` before any transfer.
     pub reserve: UncheckedAccount<'info>,
@@ -597,7 +600,10 @@ pub struct SettleDebt<'info> {
     pub pool: Box<Account<'info, LockedPool>>,
     #[account(mut, token::mint = pool.asset_mint, token::authority = spv)]
     pub spv_asset: Box<Account<'info, TokenAccount>>,
-    #[account(mut, token::mint = pool.asset_mint)]
+    /// Bound to the reserve the pool records. With only a mint constraint, the SPV could
+    /// clear the pool's debt by paying an account it controls: the books would show the
+    /// reserve repaid while the reserve received nothing.
+    #[account(mut, token::mint = pool.asset_mint, token::authority = pool.reserve)]
     pub reserve_asset: Box<Account<'info, TokenAccount>>,
     #[account(address = pool.spv)]
     pub spv: Signer<'info>,

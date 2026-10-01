@@ -354,3 +354,41 @@ fn money_cannot_be_sent_anywhere_but_the_pools_own_escrow() {
         Err(Ok(Error::PoolEscrowNotSet))
     );
 }
+
+/// ST-1. The fee manager pays the reserve's share of a distribution by a plain transfer,
+/// which no crediting path sees. `receive_yield` pulls from a registered source and so
+/// cannot recover it. Without a sync the money is held but unspendable — every balance
+/// check that governs loans, deployments and shortfall cover ignores it.
+#[test]
+fn a_pushed_transfer_can_be_credited_and_then_spent() {
+    let f = setup();
+    fund(&f, 1_000_000);
+    let before = f.client.stats_of().balance;
+    let free_before = f.client.available_for_loan();
+
+    // Somebody pushes tokens straight at the reserve, the way fee distribution does.
+    f.token.transfer(&f.manager, &f.client.address, &250_000);
+
+    assert_eq!(f.client.stats_of().balance, before, "a push moved the books");
+    assert_eq!(f.client.untracked(), 250_000);
+
+    assert_eq!(f.client.sync_untracked(), 250_000);
+    assert_eq!(f.client.stats_of().balance, before + 250_000);
+    assert_eq!(f.client.untracked(), 0);
+
+    // And it is genuinely lendable, not merely reported: the amount free to lend rose by
+    // exactly what was credited, and lending the new ceiling succeeds.
+    assert_eq!(f.client.available_for_loan(), free_before + 250_000);
+
+    f.client.set_pool_escrow(&f.admin, &f.pool, &f.manager);
+    let lendable = f.client.available_for_loan();
+    let paid_before = f.token.balance(&f.manager);
+    f.client.loan_to_pool(&f.operator, &f.pool, &f.manager, &lendable);
+    assert_eq!(f.token.balance(&f.manager) - paid_before, lendable);
+
+    assert_eq!(
+        f.client.try_sync_untracked(),
+        Err(Ok(Error::NothingToSync)),
+        "synced when there was nothing to sync"
+    );
+}
