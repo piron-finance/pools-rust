@@ -90,12 +90,14 @@ fn setup_with(config_for: fn(&Env) -> StoredConfig) -> Fixture {
     let escrow_id = env.register(PoolEscrow, (deployer, asset.address()));
     let escrow = PoolEscrowClient::new(&env, &escrow_id);
 
+    let timelock = Address::generate(&env);
     let roles = Roles {
         admin: admin.clone(),
         operator: operator.clone(),
         spv: spv.clone(),
         emergency: emergency.clone(),
         treasury: treasury.clone(),
+        upgrader: timelock.clone(),
     };
 
     // The share token names its manager, so it needs the manager's address; registering
@@ -176,12 +178,14 @@ fn a_config_that_fails_validation_cannot_be_deployed() {
     let env = Env::default();
     env.mock_all_auths();
     let addr = Address::generate(&env);
+    let timelock = Address::generate(&env);
     let roles = Roles {
         admin: addr.clone(),
         operator: addr.clone(),
         spv: addr.clone(),
         emergency: addr.clone(),
         treasury: addr,
+        upgrader: timelock.clone(),
     };
     let mut config = discounted_config(&env);
     config.maturity_date = config.epoch_end_time; // maturity must follow funding
@@ -503,12 +507,14 @@ fn a_deposit_requires_the_investor_to_have_signed() {
     env.ledger().set_timestamp(100);
     let addr = Address::generate(&env);
     let investor = Address::generate(&env);
+    let timelock = Address::generate(&env);
     let roles = Roles {
         admin: addr.clone(),
         operator: addr.clone(),
         spv: addr.clone(),
         emergency: addr.clone(),
         treasury: addr,
+        upgrader: timelock.clone(),
     };
     let id = env.register(
         SingleAssetManager,

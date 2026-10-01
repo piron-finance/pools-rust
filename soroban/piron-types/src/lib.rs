@@ -42,6 +42,17 @@ pub struct Roles {
     pub spv: Address,
     pub emergency: Address,
     pub treasury: Address,
+    /// The only address permitted to replace this pool's bytecode, bound at construction.
+    ///
+    /// Soroban claims upgrade authority once and irrevocably, so an unbound slot is not
+    /// merely "not upgradeable yet" — it is a slot anyone with the admin role can claim
+    /// for themselves, permanently, on a pool already holding funds. Binding it in the
+    /// constructor closes that window rather than leaving it to an operational step
+    /// somebody has to remember.
+    ///
+    /// The factory overwrites whatever a pool creator passes with the timelock it was
+    /// configured with, so this cannot be used to name a different authority.
+    pub upgrader: Address,
 }
 
 // ---------------------------------------------------------------- single asset

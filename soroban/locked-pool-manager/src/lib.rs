@@ -314,6 +314,10 @@ impl LockedPoolManager {
         if let Some(r) = reserve {
             env.storage().instance().set(&DataKey::Reserve, &r);
         }
+        // Bound here, not left to an operational step. Soroban claims upgrade authority
+        // once and irrevocably, so an unbound slot on a live pool is one that whoever
+        // holds the admin role can claim for themselves and keep.
+        let _ = piron_types::upgradeable::bind(&env, &roles.upgrader);
         env.storage().instance().set(&DataKey::Roles, &roles);
         env.storage().instance().set(&DataKey::Escrow, &escrow);
         env.storage().instance().set(&DataKey::Asset, &asset);

@@ -62,12 +62,14 @@ fn setup_with(cfg: Config) -> Fixture {
     let escrow_id = env.register(PoolEscrow, (deployer, asset.address()));
     let escrow = PoolEscrowClient::new(&env, &escrow_id);
 
+    let timelock = Address::generate(&env);
     let roles = Roles {
         admin: admin.clone(),
         operator: admin.clone(),
         spv: spv.clone(),
         emergency: admin.clone(),
         treasury: treasury.clone(),
+        upgrader: timelock.clone(),
     };
     // The token names its manager and the manager names its token. In production the
     // factory breaks that circle with a salt; here the token is re-registered at the same

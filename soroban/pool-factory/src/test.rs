@@ -53,6 +53,7 @@ struct Fixture {
     treasury: Address,
     outsider: Address,
     investor: Address,
+    timelock: Address,
 }
 
 fn setup() -> Fixture {
@@ -101,6 +102,10 @@ fn setup() -> Fixture {
     access.grant_during_deployment(&admin, &(Role::Factory as u32), &factory_id);
     registry.set_asset_approved(&admin, &asset, &true);
 
+    // Every pool the factory builds gets this as its upgrade authority.
+    let timelock = Address::generate(&env);
+    factory.set_timelock(&admin, &timelock);
+
     factory.set_manager_wasm(
         &admin,
         &PoolType::SingleAsset,
@@ -129,7 +134,17 @@ fn setup() -> Fixture {
         treasury,
         outsider,
         investor,
+        timelock,
     }
+}
+
+/// The fixture, minus the factory's upgrade authority.
+fn setup_without_timelock() -> Fixture {
+    let f = setup();
+    f.env.as_contract(&f.factory.address, || {
+        f.env.storage().instance().remove(&DataKey::Timelock);
+    });
+    f
 }
 
 fn pool_roles(f: &Fixture) -> Roles {
@@ -139,6 +154,9 @@ fn pool_roles(f: &Fixture) -> Roles {
         spv: f.spv.clone(),
         emergency: f.emergency.clone(),
         treasury: f.treasury.clone(),
+        // Deliberately not the timelock: the factory must overwrite whatever a creator
+        // passes, or a pool creator could own that pool's bytecode for good.
+        upgrader: f.outsider.clone(),
     }
 }
 
@@ -413,4 +431,55 @@ fn a_pool_cannot_be_created_on_an_unapproved_asset() {
     // Nothing was left half-built.
     assert_eq!(f.factory.pool_count(), 0);
     assert!(!f.factory.is_salt_used(&salt(&f.env, 1)));
+}
+
+/// ST-3. A pool's upgrade authority is bound when the manager is constructed, to the
+/// timelock the factory was configured with — not to whatever the pool creator passed.
+///
+/// Soroban claims upgrade authority once and irrevocably. An unbound slot on a live pool
+/// is not "not upgradeable yet": it is a slot anyone holding the admin role can claim for
+/// themselves and keep, on a contract already holding funds. Nothing used to bind it, and
+/// the deploy script's own comment claimed otherwise.
+#[test]
+fn a_pool_cannot_choose_its_own_upgrade_authority() {
+    let f = setup();
+    let salt = BytesN::from_array(&f.env, &[9u8; 32]);
+
+    // `pool_roles` deliberately names `outsider` as the upgrader.
+    let pools = f.factory.create_locked_pool(
+        &f.admin,
+        &salt,
+        &pool_roles(&f),
+        &f.asset,
+        &1_000i128,
+        &None,
+    );
+
+    let manager = locked_wasm::Client::new(&f.env, &pools.manager);
+    assert_eq!(
+        manager.upgrader(),
+        Some(f.timelock.clone()),
+        "the pool did not take the factory's timelock as its upgrade authority"
+    );
+    assert_ne!(manager.upgrader(), Some(f.outsider.clone()));
+}
+
+/// And a factory with no timelock configured refuses to build a pool at all, rather than
+/// deploying one whose upgrade slot is open for the taking.
+#[test]
+fn a_factory_without_an_upgrade_authority_creates_nothing() {
+    let f = setup_without_timelock();
+    let salt = BytesN::from_array(&f.env, &[8u8; 32]);
+
+    assert_eq!(
+        f.factory.try_create_locked_pool(
+            &f.admin,
+            &salt,
+            &pool_roles(&f),
+            &f.asset,
+            &1_000i128,
+            &None,
+        ),
+        Err(Ok(Error::TimelockNotSet))
+    );
 }

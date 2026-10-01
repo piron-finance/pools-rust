@@ -89,7 +89,7 @@ about the position.
 
 ---
 
-## ST-3 · High · Every pool's manager has an unclaimed, permanent upgrader slot — **open**
+## ST-3 · High · Every pool's manager had an unclaimed, permanent upgrader slot — **fixed**
 
 **Where** `pool-factory/src/lib.rs:162` onward, and `bind_upgrader` on all three managers
 
@@ -133,19 +133,26 @@ This is also a real divergence from EVM, where `Manager`, `StableYieldManager` a
 `LockedPoolManager` are all `msg.sender == timelockController`. Pool logic is upgradeable
 through the timelock on EVM and bound to nobody on Stellar.
 
-### Fix — not applied in this pass
+### Fix
 
-The durable fix is to **bind at construction**, closing the window entirely: thread the
-timelock into each manager's constructor (via `Roles`, which the factory already passes
-through, or as its own parameter) and call `bind` there. No admin action, no window, no
-land-grab.
+Bound at construction, which closes the window entirely rather than leaving it to an
+operational step somebody has to remember.
 
-I have not applied it because it changes three manager constructors, the three factory
-creation functions, the deploy script and every test fixture that constructs a manager —
-a coordinated change I would rather land deliberately than fold into a review pass. Until
-it does land, the operational requirement is: **immediately after creating any pool, the
-admin must call `bind_upgrader(admin, timelock)` on its manager.** That requirement is
-currently written down nowhere.
+`Roles` gained an `upgrader` field — it is already threaded through every manager
+constructor and the factory, so this was the narrowest seam available. Each manager calls
+`upgradeable::bind` in `__constructor`, before it is reachable by anybody.
+
+The factory **overwrites** whatever upgrader a pool creator supplies with the timelock it
+was configured with (`set_timelock`, admin only), so this cannot be used to name a
+different authority. A factory with no timelock configured refuses to create pools at all,
+rather than deploying one whose upgrade slot is open for the taking.
+
+Verified by `a_pool_cannot_choose_its_own_upgrade_authority`, which passes an outsider as
+the creator's upgrader and asserts the deployed manager reports the factory's timelock
+instead; and by `a_factory_without_an_upgrade_authority_creates_nothing`.
+
+The deploy script now configures the factory, and its comment no longer claims something
+untrue of pools.
 
 ---
 

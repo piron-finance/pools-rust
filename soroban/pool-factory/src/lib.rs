@@ -44,6 +44,8 @@ pub enum Error {
     WasmNotSet = 711,
     SaltAlreadyUsed = 712,
     AlreadyBound = 715,
+    /// No upgrade authority configured; creating a pool nobody could ever fix is refused.
+    TimelockNotSet = 719,
 }
 
 /// A pool and the escrow that holds its money.
@@ -77,6 +79,8 @@ pub enum DataKey {
     /// Salts already spent, so a repeat call fails loudly rather than at the host level.
     Used(BytesN<32>),
     PoolCount,
+    /// The upgrade authority stamped onto every pool this factory creates.
+    Timelock,
 }
 
 #[contractclient(name = "AccessClient")]
@@ -159,6 +163,34 @@ impl PoolFactory {
     // ------------------------------------------------------------ creation
 
     /// Deploys a Single-Asset pool: escrow, manager, wired and registered.
+    /// Names the upgrade authority every future pool will be built with. Admin only.
+    ///
+    /// Changing it affects only later deployments — a pool already created has bound its
+    /// upgrader irrevocably, which is the point.
+    pub fn set_timelock(env: Env, caller: Address, timelock: Address) -> Result<(), Error> {
+        Self::require(&env, &caller, Role::DefaultAdmin)?;
+        env.storage().instance().set(&DataKey::Timelock, &timelock);
+        Ok(())
+    }
+
+    pub fn timelock(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::Timelock)
+    }
+
+    /// Replaces whatever upgrader a pool creator supplied with the configured timelock.
+    ///
+    /// A creator naming their own address would own that pool's bytecode for good, so the
+    /// caller's value is never trusted — and a factory with no timelock configured refuses
+    /// to create pools rather than deploying one nobody can ever fix.
+    fn with_timelock(env: &Env, mut roles: Roles) -> Result<Roles, Error> {
+        roles.upgrader = env
+            .storage()
+            .instance()
+            .get(&DataKey::Timelock)
+            .ok_or(Error::TimelockNotSet)?;
+        Ok(roles)
+    }
+
     pub fn create_single_asset_pool(
         env: Env,
         caller: Address,
@@ -169,6 +201,7 @@ impl PoolFactory {
         share_metadata: ShareMetadata,
     ) -> Result<PoolAddresses, Error> {
         Self::require_creator(&env, &caller)?;
+        let roles = Self::with_timelock(&env, roles)?;
         let escrow = Self::deploy_escrow(&env, &salt, &asset)?;
         // The share token must name its manager, and the manager must name its share
         // token. The salt breaks the circle: the manager's address is derivable before it
@@ -203,6 +236,7 @@ impl PoolFactory {
         reserve: Option<Address>,
     ) -> Result<PoolAddresses, Error> {
         Self::require_creator(&env, &caller)?;
+        let roles = Self::with_timelock(&env, roles)?;
         let escrow = Self::deploy_escrow(&env, &salt, &asset)?;
         let manager = env
             .deployer()
@@ -225,6 +259,7 @@ impl PoolFactory {
         share_metadata: ShareMetadata,
     ) -> Result<PoolAddresses, Error> {
         Self::require_creator(&env, &caller)?;
+        let roles = Self::with_timelock(&env, roles)?;
         let escrow = Self::deploy_escrow(&env, &salt, &asset)?;
         let share = Self::deploy_share(&env, &salt, &share_metadata)?;
         let manager = env

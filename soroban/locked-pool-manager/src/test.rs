@@ -57,12 +57,14 @@ fn setup() -> Fixture {
     let escrow_id = env.register(PoolEscrow, (deployer, asset.address()));
     let escrow = PoolEscrowClient::new(&env, &escrow_id);
 
+    let timelock = Address::generate(&env);
     let roles = Roles {
         admin: admin.clone(),
         operator: admin.clone(),
         spv: admin.clone(),
         emergency: admin.clone(),
         treasury: treasury.clone(),
+        upgrader: timelock.clone(),
     };
     let id = env.register(
         LockedPoolManager,
@@ -501,12 +503,14 @@ fn an_early_exit_is_covered_by_the_reserve_when_the_escrow_holds_only_principal(
     let escrow_id = env.register(PoolEscrow, (admin.clone(), asset.address()));
     let escrow = PoolEscrowClient::new(&env, &escrow_id);
 
+    let timelock = Address::generate(&env);
     let roles = Roles {
         admin: admin.clone(),
         operator: admin.clone(),
         spv: spv.clone(),
         emergency: admin.clone(),
         treasury: treasury.clone(),
+        upgrader: timelock.clone(),
     };
     let id = env.register(
         LockedPoolManager,
