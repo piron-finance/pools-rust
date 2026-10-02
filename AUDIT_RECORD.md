@@ -202,6 +202,30 @@ realise. This is deliberate parity with the Solidity and reversing it changes th
 economics of every interest-bearing pool, so it wants a decision rather than a patch.
 
 
+## Closed since: instruments marked at face from day one
+
+Left open through two earlier passes as a product decision, because reversing it changes
+the economics of every interest-bearing pool. Closed now, because the behaviour is wrong
+on its own terms rather than merely aggressive.
+
+`interest_bearing_value` ignored `purchase_price` and returned face plus accrued coupon, so
+an instrument bought below par was marked at redemption value the moment it was recorded.
+An SPV lifted NAV simply by buying cheaply, the gain was unearned until the bond actually
+redeemed, and a default beforehand read as a fall from a level the pool had never held.
+
+The capital leg now accretes from what was paid toward face over the holding period —
+exactly `discounted_value` — with the coupon accrued on top. Both instrument types now
+agree about what holding something below par is worth.
+
+Applied in `piron-core` and `StableYieldNAVLibrary`, so all three runtimes move together.
+
+Worth noting why it had survived this long: every existing test bought at par, where the
+two behaviours are identical. The change broke nothing, which is exactly why it needed new
+coverage rather than a green suite. Verified on both sides by reverting the fix and
+confirming the new tests catch it — on Solidity, NAV jumped from 194,000 to 204,000 the
+instant the purchase was recorded, the whole 10,000 discount booked unearned.
+
+
 ## Open
 
 **Mid-deal SPV default.** `emergencyExit` is now guarded to the window where the escrow is
