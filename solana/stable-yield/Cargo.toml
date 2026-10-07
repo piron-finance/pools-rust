@@ -51,3 +51,12 @@ solana-signer = "3"
 solana-instruction = "3"
 solana-system-interface = "2"
 solana-transaction = "4"
+
+# Release builds turn integer overflow checks off by default, and these crates are
+# deliberately outside the workspace whose profile switches them on — so the setting the
+# rest of the repository relies on never reached them. An unguarded `-` on a balance would
+# wrap to a very large number instead of aborting the instruction.
+#
+# `cargo-build-sbf` builds in release, and honours the profile in the manifest it builds.
+[profile.release]
+overflow-checks = true

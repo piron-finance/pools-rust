@@ -12,6 +12,11 @@
 //! Conversion between shares and assets stays in the manager: this contract deliberately
 //! knows nothing about NAV. A share token that priced itself would be a second opinion on
 //! what the pool is worth.
+//!
+//! There is no upgrade path, by design and by omission of the functions that would give
+//! one. A holder's balance is the position, so the contract recording it is immutable —
+//! the same choice `LiquidityPool.sol` and `StableYieldPool.sol` make by reverting in
+//! `_authorizeUpgrade`.
 
 #![no_std]
 

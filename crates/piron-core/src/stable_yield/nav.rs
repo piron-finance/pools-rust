@@ -36,11 +36,15 @@ pub fn discounted_value(instrument: &InstrumentHolding, now: u64) -> Result<Amou
     math::checked_add(instrument.purchase_price, accrued)
 }
 
-/// Mark-to-model value of an interest-bearing instrument: face plus accrued coupon.
+/// Mark-to-model value of an interest-bearing instrument: the capital accreted from what
+/// was paid toward face, plus the coupon accrued since the last payment.
 ///
-/// Note this ignores `purchase_price` entirely — an instrument bought below par is marked
-/// at face from the moment it is held, so the pool books that gain immediately rather than
-/// accreting it. That matches the Solidity.
+/// Marking straight at face ignored `purchase_price`, so an instrument bought below par
+/// booked the whole discount the moment it was recorded — an SPV could lift NAV simply by
+/// buying cheaply, and the gain was unearned until the bond actually redeemed. A default
+/// before maturity would then have been a fall from a level the pool never truly held.
+/// The discount now accretes over the holding period, the same way a discounted
+/// instrument's does.
 pub fn interest_bearing_value(instrument: &InstrumentHolding, now: u64) -> Result<Amount, Error> {
     if instrument.coupon_frequency == 0 {
         return Err(Error::InvalidCouponFrequency);
@@ -76,7 +80,12 @@ pub fn interest_bearing_value(instrument: &InstrumentHolding, now: u64) -> Resul
     )?;
     let accrued = math::mul_div(coupon_amount, since_last as Amount, coupon_period as Amount)?;
 
-    math::checked_add(instrument.face_value, accrued)
+    // The capital leg accretes purchase price toward face over the holding period, and is
+    // capped at face once the term is up — exactly `discounted_value`, so the two
+    // instrument types agree about what holding something below par is worth.
+    let capital = discounted_value(instrument, now)?;
+
+    math::checked_add(capital, accrued)
 }
 
 /// Value of one holding, whichever kind it is.

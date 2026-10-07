@@ -131,13 +131,20 @@ call "$FEES" set_collector --caller "$ADMIN" --collector "$LOCKED_MANAGER" --all
 # rather than through the pool, which holds no funds of its own.
 call "$RESERVE_C" set_source --caller "$ADMIN" --source "$SPV" --allowed true >/dev/null
 
-# Every contract names the timelock as its upgrader, so no bytecode in the system can be
-# replaced without passing the 72-hour delay and the guardian's brake.
+# Every singleton names the timelock as its upgrader here. Pools are created later and
+# bind theirs in their own constructor, from the timelock the factory is given below — so
+# no bytecode in the system can be replaced without passing the 72-hour delay and the
+# guardian's brake, and a pool's upgrade slot is never left open for the taking.
 echo "Binding upgraders..."
 for c in "$ACCESS" "$REGISTRY" "$FEES" "$FACTORY" "$RESERVE_C" "$MANAGER" "$LOCKED_MANAGER"; do
   call "$c" bind_upgrader --caller "$ADMIN" --upgrader "$TIMELOCK" >/dev/null
 done
 call "$TIMELOCK" bind_upgrader --caller "$ADMIN" --upgrader "$TIMELOCK" >/dev/null
+
+# Stamped onto every pool the factory builds. Without it the factory refuses to create
+# pools at all, rather than deploying one whose upgrade authority nobody holds.
+call "$FACTORY" set_timelock --caller "$ADMIN" --timelock "$TIMELOCK" >/dev/null
+echo "Factory configured to stamp the timelock onto new pools"
 
 mkdir -p "$ROOT/deployments"
 cat > "$OUT" <<EOF

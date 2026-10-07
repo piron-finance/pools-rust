@@ -57,12 +57,14 @@ fn setup() -> Fixture {
     let escrow_id = env.register(PoolEscrow, (deployer, asset.address()));
     let escrow = PoolEscrowClient::new(&env, &escrow_id);
 
+    let timelock = Address::generate(&env);
     let roles = Roles {
         admin: admin.clone(),
         operator: admin.clone(),
         spv: admin.clone(),
         emergency: admin.clone(),
         treasury: treasury.clone(),
+        upgrader: timelock.clone(),
     };
     let id = env.register(
         LockedPoolManager,
@@ -501,12 +503,14 @@ fn an_early_exit_is_covered_by_the_reserve_when_the_escrow_holds_only_principal(
     let escrow_id = env.register(PoolEscrow, (admin.clone(), asset.address()));
     let escrow = PoolEscrowClient::new(&env, &escrow_id);
 
+    let timelock = Address::generate(&env);
     let roles = Roles {
         admin: admin.clone(),
         operator: admin.clone(),
         spv: spv.clone(),
         emergency: admin.clone(),
         treasury: treasury.clone(),
+        upgrader: timelock.clone(),
     };
     let id = env.register(
         LockedPoolManager,
@@ -548,4 +552,28 @@ fn an_early_exit_is_covered_by_the_reserve_when_the_escrow_holds_only_principal(
     client.settle_debt(&spv, &owed);
     assert_eq!(client.pool_debt(), 0);
     assert_eq!(MockReserveClient::new(&env, &reserve).lent(), 0);
+}
+
+/// ST-2. Persistent entries expire after 60 days unless something touches them, and a
+/// locked term runs well past that. `bump_positions` gives a keeper one batched,
+/// permissionless call to extend many at once, rather than one transaction per position.
+#[test]
+fn positions_can_be_kept_alive_in_one_call() {
+    let f = setup();
+    let a = f.client.deposit(&f.investor, &PRINCIPAL, &0, &1);
+    let b = f.client.deposit(&f.investor, &PRINCIPAL, &0, &1);
+
+    let mut ids = soroban_sdk::Vec::new(&f.env);
+    ids.push_back(a);
+    ids.push_back(b);
+    ids.push_back(9_999); // not a position; counted as untouched rather than failing
+
+    assert_eq!(f.client.bump_positions(&ids), 2);
+
+    // Bumping extends lifetime and changes nothing else: the position is untouched and
+    // still redeems on its own schedule.
+    f.env.ledger().set_timestamp(START + TERM + 1);
+    let before = f.token.balance(&f.investor);
+    f.client.redeem(&f.investor, &a);
+    assert_eq!(f.token.balance(&f.investor) - before, PRINCIPAL + INTEREST);
 }

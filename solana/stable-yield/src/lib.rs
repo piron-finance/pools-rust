@@ -844,9 +844,9 @@ pub struct Deposit<'info> {
     pub vault: Box<Account<'info, TokenAccount>>,
     #[account(mut, seeds = [seeds::SHARE_MINT, pool.key().as_ref()], bump)]
     pub share_mint: Box<Account<'info, Mint>>,
-    #[account(mut, token::authority = holder)]
+    #[account(mut, token::mint = pool.load()?.asset_mint, token::authority = holder)]
     pub holder_asset: Box<Account<'info, TokenAccount>>,
-    #[account(mut, token::authority = holder)]
+    #[account(mut, token::mint = share_mint.key(), token::authority = holder)]
     pub holder_shares: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
     pub holder: Signer<'info>,

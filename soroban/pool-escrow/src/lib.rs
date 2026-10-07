@@ -243,10 +243,17 @@ impl PoolEscrow {
 
 // ---------------------------------------------------------------- upgrades
 //
-// Soroban contracts replace their own bytecode; there is no proxy. So each one names an
-// upgrader once — in production the timelock — and only that address can swap the code.
-// The 72-hour delay and the guardian's brake live there, in front of every upgrade in the
-// system.
+// Soroban contracts replace their own bytecode; there is no proxy, so each one names an
+// upgrader once and only that address can swap the code.
+//
+// A pool escrow is never bound in practice, and that is deliberate — it matches
+// `PoolEscrow.sol`, whose `_authorizeUpgrade` reverts outright. `bind_upgrader` requires
+// the deployer, which for a pool escrow is the factory, and the factory has no entry
+// point that calls it. So a deployed escrow is immutable: the contract holding user funds
+// cannot have its code replaced by anyone, including the timelock.
+//
+// The functions below remain for an escrow deployed directly rather than through the
+// factory, where the deployer is a real account that may want the timelock in front of it.
 
 #[contractimpl]
 impl PoolEscrow {

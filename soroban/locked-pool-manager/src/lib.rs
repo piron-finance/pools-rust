@@ -314,6 +314,10 @@ impl LockedPoolManager {
         if let Some(r) = reserve {
             env.storage().instance().set(&DataKey::Reserve, &r);
         }
+        // Bound here, not left to an operational step. Soroban claims upgrade authority
+        // once and irrevocably, so an unbound slot on a live pool is one that whoever
+        // holds the admin role can claim for themselves and keep.
+        let _ = piron_types::upgradeable::bind(&env, &roles.upgrader);
         env.storage().instance().set(&DataKey::Roles, &roles);
         env.storage().instance().set(&DataKey::Escrow, &escrow);
         env.storage().instance().set(&DataKey::Asset, &asset);
@@ -728,6 +732,29 @@ impl LockedPoolManager {
     }
 
     // ------------------------------------------------------------ views
+
+    /// Extends the storage lifetime of many positions in one transaction.
+    ///
+    /// Persistent entries expire after `PERSISTENT_BUMP_LEDGERS` (60 days) unless
+    /// something touches them, and a locked term runs well past that — 90, 180, 365 days
+    /// and now up to ten. An untouched position archives mid-term, and while an archived
+    /// entry can be restored it cannot be redeemed until somebody does, which is not a
+    /// state to leave a holder in by default.
+    ///
+    /// Reading a position already extends it, so a keeper could call `position` in a loop
+    /// — but that is one transaction per position and nothing in the repository does it.
+    /// This makes the operation explicit, batched and permissionless: it only extends the
+    /// life of data that already exists, so there is nothing to gain by calling it.
+    pub fn bump_positions(env: Env, position_ids: Vec<u64>) -> u32 {
+        bump_instance(&env);
+        let mut bumped = 0u32;
+        for id in position_ids.iter() {
+            if read_position(&env, id).is_some() {
+                bumped += 1;
+            }
+        }
+        bumped
+    }
 
     pub fn position(env: Env, position_id: u64) -> Result<StoredPosition, Error> {
         read_position(&env, position_id).ok_or(Error::PositionNotFound)

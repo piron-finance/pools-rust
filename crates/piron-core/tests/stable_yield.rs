@@ -436,3 +436,50 @@ fn a_tier_cannot_lock_capital_past_the_ceiling() {
         Err(Error::InvalidTierDuration)
     );
 }
+
+/// M3. An interest-bearing instrument bought below par accretes the discount over the
+/// holding period rather than booking it on day one.
+///
+/// Marking straight at face meant an SPV lifted NAV simply by buying cheaply, and the gain
+/// was unearned until the bond actually redeemed — a default beforehand read as a fall from
+/// a level the pool never held. The existing coverage bought at par, where the two
+/// behaviours are identical, so this exercises the case that told them apart.
+#[test]
+fn an_interest_bearing_instrument_bought_below_par_accretes_the_discount() {
+    let mut i = interest_bearing();
+    i.purchase_price = 900_000;
+    i.face_value = 1_000_000;
+
+    // On day one it is worth what was paid, not what it will redeem for.
+    assert_eq!(nav::instrument_value(&i, PURCHASE).unwrap(), 900_000);
+
+    // Halfway through the term, half the 100,000 discount has accreted, plus the coupon
+    // accrued over that time — 8% of face across four coupons is 20,000 a quarter, and
+    // half a year is two full quarters, so the coupon leg is capped at one period's worth.
+    let midway = nav::instrument_value(&i, PURCHASE + YEAR / 2).unwrap();
+    assert_eq!(midway, 950_000 + 20_000);
+
+    // At maturity the capital leg is face, never beyond it.
+    let at_maturity = nav::instrument_value(&i, PURCHASE + YEAR).unwrap();
+    assert_eq!(at_maturity, 1_000_000 + 20_000);
+
+    // And it does not keep climbing afterwards.
+    assert_eq!(
+        nav::instrument_value(&i, PURCHASE + 2 * YEAR).unwrap(),
+        at_maturity,
+        "value grew past maturity"
+    );
+}
+
+/// Bought at par there is no discount to accrete, so the mark is face plus the coupon —
+/// which is what the behaviour was before, and must still hold.
+#[test]
+fn an_interest_bearing_instrument_bought_at_par_is_marked_at_face_plus_coupon() {
+    let i = interest_bearing();
+    assert_eq!(i.purchase_price, i.face_value);
+    assert_eq!(nav::instrument_value(&i, PURCHASE).unwrap(), 1_000_000);
+    assert_eq!(
+        nav::instrument_value(&i, PURCHASE + YEAR / 4).unwrap(),
+        1_000_000 + 20_000
+    );
+}
