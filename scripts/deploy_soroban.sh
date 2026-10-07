@@ -92,10 +92,19 @@ call "$FACTORY" set_manager_wasm --caller "$ADMIN" --kind SingleAsset --wasm_has
 call "$FACTORY" set_manager_wasm --caller "$ADMIN" --kind Locked --wasm_hash "$LOCKED_WASM" >/dev/null
 call "$FACTORY" set_manager_wasm --caller "$ADMIN" --kind StableYield --wasm_hash "$STABLE_WASM" >/dev/null
 
+# Must precede pool creation: the factory stamps this onto every pool it builds and
+# refuses to build any without it, rather than deploying a pool whose upgrade authority
+# nobody holds. Binding the singletons' own upgraders happens later, after the pools
+# exist, but this has to be in place first.
+call "$FACTORY" set_timelock --caller "$ADMIN" --timelock "$TIMELOCK" >/dev/null
+
 echo "Creating a pool through the factory..."
 NOW="$(date +%s)"
 SALT="$(openssl rand -hex 32)"
-ROLES="{\"admin\":\"$ADMIN\",\"operator\":\"$OPERATOR\",\"spv\":\"$SPV\",\"emergency\":\"$EMERGENCY\",\"treasury\":\"$TREASURY\"}"
+# `upgrader` must be present for the CLI to parse the Roles type, even though the
+# factory overwrites it with the timelock it was configured with — a pool creator
+# does not get to name the authority that can replace its bytecode.
+ROLES="{\"admin\":\"$ADMIN\",\"operator\":\"$OPERATOR\",\"spv\":\"$SPV\",\"emergency\":\"$EMERGENCY\",\"treasury\":\"$TREASURY\",\"upgrader\":\"$TIMELOCK\"}"
 CONFIG="{\"instrument_type\":0,\"face_value\":\"0\",\"purchase_price\":\"1000000000\",\"target_raise\":\"1000000000\",\"epoch_end_time\":$((NOW+604800)),\"maturity_date\":$((NOW+7776000)),\"coupon_dates\":[],\"coupon_rates\":[],\"discount_rate\":500,\"minimum_funding_threshold\":8000,\"min_investment\":\"10000000\",\"withdrawal_fee_bps\":50}"
 
 # Deterministic: the addresses are knowable before the transaction that creates them.
@@ -136,15 +145,22 @@ call "$RESERVE_C" set_source --caller "$ADMIN" --source "$SPV" --allowed true >/
 # no bytecode in the system can be replaced without passing the 72-hour delay and the
 # guardian's brake, and a pool's upgrade slot is never left open for the taking.
 echo "Binding upgraders..."
-for c in "$ACCESS" "$REGISTRY" "$FEES" "$FACTORY" "$RESERVE_C" "$MANAGER" "$LOCKED_MANAGER"; do
+for c in "$ACCESS" "$REGISTRY" "$FEES" "$FACTORY" "$RESERVE_C"; do
   call "$c" bind_upgrader --caller "$ADMIN" --upgrader "$TIMELOCK" >/dev/null
 done
 call "$TIMELOCK" bind_upgrader --caller "$ADMIN" --upgrader "$TIMELOCK" >/dev/null
 
-# Stamped onto every pool the factory builds. Without it the factory refuses to create
-# pools at all, rather than deploying one whose upgrade authority nobody holds.
-call "$FACTORY" set_timelock --caller "$ADMIN" --timelock "$TIMELOCK" >/dev/null
-echo "Factory configured to stamp the timelock onto new pools"
+# The pool managers are deliberately absent from that loop: they bind at construction from
+# the timelock the factory stamps on them, so binding again returns AlreadyBound. Assert it
+# instead — a pool whose upgrade slot was somehow left open is the thing worth catching.
+for m in "$MANAGER" "$LOCKED_MANAGER"; do
+  bound="$(call "$m" upgrader | tr -d '"')"
+  if [[ "$bound" != "$TIMELOCK" ]]; then
+    echo "FAILED: $m upgrader is '$bound', expected the timelock '$TIMELOCK'" >&2
+    exit 1
+  fi
+done
+echo "Pool managers verified bound to the timelock at construction"
 
 mkdir -p "$ROOT/deployments"
 cat > "$OUT" <<EOF
