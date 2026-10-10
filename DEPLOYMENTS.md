@@ -46,7 +46,14 @@ stellar contract bindings typescript \
 new Program(idl, provider)   // idl = abi/solana/piron_locked_solana.json
 ```
 
-Regenerating both: `./scripts/generate_abis.sh`.
+Regenerating both: `./scripts/generate_abis.sh`, or `./scripts/generate_abis.sh testnet` to
+additionally diff every Soroban file against the live contract.
+
+It also checks that each Solana program id is the same in all four places it appears —
+`declare_id!`, `Anchor.toml`, the IDL's `address`, and `deployments/solana-devnet.env` —
+and fails if any disagree. That check exists because `anchor idl build` rewrites
+`declare_id!` and `Anchor.toml` with freshly generated keypairs when it does not like what
+it finds, silently, and a mismatch there makes every instruction fail with 4100.
 
 ## Stellar testnet
 
@@ -140,6 +147,16 @@ Single-asset and stable-yield pools need no wiring at all.
 | Single asset | `3vYqiPnknt7dpzxXmioKsfNqK8rW8oX6tDFFa1E6LVeN` | `abi/solana/piron_single_asset_solana.json` (13 instructions) |
 | Locked | `5u4jwH1Rug5b356G3CxxMPbNGH21RexZbaE3wGPc6Yv6` | `abi/solana/piron_locked_solana.json` (11) |
 | Stable yield | `13b1FcFBAnGEX4ocCrPp1dUx2MmbwuQEK5nHRxv75K1g` | `abi/solana/piron_stable_yield_solana.json` (13) |
+
+**If you tried these programs before 2026-10-10 and got error 4100, that was real.** All
+three were deployed declaring a placeholder program id, which Anchor checks against the
+address the program actually runs at and rejects before dispatch — so no instruction could
+execute on any of them. They were rebuilt with their real ids and upgraded in place at the
+same three addresses, and each was then verified by sending a live instruction: all three
+now reach dispatch. `SOLANA_FINDINGS.md` SOL-5 has the detail.
+
+The addresses did not change, so nothing you recorded is stale. The IDLs did — any copy of
+`abi/solana/*.json` taken before 2026-10-10 is addressed wrongly and must be replaced.
 
 **There are no pool addresses, and that is not an omission.** A Solana pool is a PDA
 derived from a pool id under its program, created when an admin calls `initialize_pool`.

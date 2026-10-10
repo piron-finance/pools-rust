@@ -28,7 +28,9 @@ use state::{
     MAX_INSTRUMENTS,
 };
 
-declare_id!("GG3TwC8y744PqjSm7fBu1oa8j6jcuw7DEP6RVyvtMea");
+// The live devnet address — see the note in solana/Anchor.toml. A mismatch between this
+// and the address the program runs at fails every instruction with 4100.
+declare_id!("13b1FcFBAnGEX4ocCrPp1dUx2MmbwuQEK5nHRxv75K1g");
 
 fn map_err(err: piron_core::Error) -> Error {
     Error::from(ProgramError::Custom(err.code()))

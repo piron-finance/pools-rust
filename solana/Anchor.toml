@@ -1,20 +1,34 @@
+# Exists so `anchor idl build` can emit an IDL per program — the IDL is the ABI any
+# client needs, and `cargo-build-sbf` does not produce one. Builds still go through
+# cargo-build-sbf; this file is not here to take the build over.
+#
+# The programs stay outside the Rust workspace (see ../Cargo.toml) because cargo-build-sbf
+# manages its own toolchain. Anchor is content to treat them as members from here.
+#
+# WARNING. `anchor` rewrites this file and every `declare_id!` in the programs if the ids
+# here do not match its own keypair files: it generates fresh keypairs, writes their
+# pubkeys into the sources, and says nothing. That is how three programs came to be
+# deployed declaring a placeholder id, and it is why scripts/generate_abis.sh checks these
+# ids against the sources and the deployment record after every run.
+#
+# The ids below are the live devnet addresses. They must equal, exactly:
+#   - `declare_id!` in each program's lib.rs
+#   - PIRON_SOLANA_*_PROGRAM in deployments/solana-devnet.env
+#   - the `address` field of each IDL in abi/solana/
+# If they ever disagree, every instruction fails with DeclaredProgramIdMismatch (4100)
+# before reaching a handler.
+
 [toolchain]
 anchor_version = "1.1.2"
-
-[features]
-resolution = true
-skip-lint = false
-
-[programs.devnet]
-piron_locked_solana = "FRKEuWHh8pX4ZReGACVFQv2pB9b3DNVdthqHhdwBTBkh"
-piron_single_asset_solana = "ZmF2NjKuiRrE8NYG7Kou1BzBPRV6VYRsXsUCqLpjBmR"
-piron_stable_yield_solana = "GG3TwC8y744PqjSm7fBu1oa8j6jcuw7DEP6RVyvtMea"
-
-[provider]
-cluster = "devnet"
-wallet = "~/.config/solana/id.json"
 
 [workspace]
 members = ["single-asset", "locked", "stable-yield"]
 
-[hooks]
+[programs.devnet]
+piron_single_asset_solana = "3vYqiPnknt7dpzxXmioKsfNqK8rW8oX6tDFFa1E6LVeN"
+piron_locked_solana = "5u4jwH1Rug5b356G3CxxMPbNGH21RexZbaE3wGPc6Yv6"
+piron_stable_yield_solana = "13b1FcFBAnGEX4ocCrPp1dUx2MmbwuQEK5nHRxv75K1g"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"

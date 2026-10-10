@@ -57,6 +57,64 @@ for p in single_asset locked stable_yield; do
     "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["instructions"]))' "$out")"
 done
 
+# ------------------------------------------------------------ the id check
+#
+# `anchor` rewrites Anchor.toml and every `declare_id!` if the ids it finds do not match
+# its own keypair files — it generates fresh keypairs, writes their pubkeys into the
+# sources, and says nothing. That is not hypothetical: it is how three programs came to be
+# deployed declaring `Piron11111111111111111111111111111111111111`, which made every
+# instruction fail with DeclaredProgramIdMismatch (4100) before reaching a handler, on a
+# deployment that had been reported as successful.
+#
+# Anchor's own codegen is the reason it is fatal rather than cosmetic:
+#
+#     if *program_id != ID {
+#         return Err(ErrorCode::DeclaredProgramIdMismatch.into());
+#     }
+#     dispatch(program_id, accounts, data)
+#
+# The test suites cannot catch it. litesvm loads each program *at* its declared id, so
+# `*program_id == ID` holds in every test and holds nowhere else. Hence this check, which
+# compares all four places an id appears and fails the build if any disagree.
+
+echo "Checking program ids agree across source, Anchor.toml, the IDLs and the deployment:"
+id_fail=0
+DEVNET_ENV="$ROOT/deployments/solana-devnet.env"
+for p in single_asset locked stable_yield; do
+  src="$ROOT/solana/$(echo "$p" | tr '_' '-')/src/lib.rs"
+  from_src="$(grep -o 'declare_id!("[^"]*")' "$src" | sed 's/.*("\(.*\)").*/\1/')"
+  from_toml="$(grep "^piron_${p}_solana" "$ROOT/solana/Anchor.toml" | sed 's/.*"\(.*\)".*/\1/')"
+  from_idl="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["address"])' \
+    "$ROOT/abi/solana/piron_${p}_solana.json")"
+  var="PIRON_SOLANA_$(echo "$p" | tr 'a-z' 'A-Z')_PROGRAM"
+  from_env=""
+  [[ -f "$DEVNET_ENV" ]] && from_env="$(grep "^$var=" "$DEVNET_ENV" 2>/dev/null | cut -d= -f2 || true)"
+
+  if [[ "$from_src" == "$from_toml" && "$from_src" == "$from_idl" ]] \
+     && { [[ -z "$from_env" ]] || [[ "$from_src" == "$from_env" ]]; }; then
+    printf "  OK    %-14s %s\n" "$p" "$from_src"
+  else
+    printf "  WRONG %-14s\n" "$p"
+    printf "        declare_id!  %s\n" "${from_src:-<none>}"
+    printf "        Anchor.toml  %s\n" "${from_toml:-<none>}"
+    printf "        IDL address  %s\n" "${from_idl:-<none>}"
+    printf "        deployed     %s\n" "${from_env:-<not deployed>}"
+    id_fail=1
+  fi
+
+  # A placeholder is the specific shape anchor leaves behind, and it compiles, so it has
+  # to be rejected by name rather than by failing to parse.
+  if [[ "$from_src" == Piron* && "$from_src" == *1111* ]]; then
+    printf "        ^ that is a placeholder, not a real program id\n"
+    id_fail=1
+  fi
+done
+if [[ $id_fail -ne 0 ]]; then
+  echo "Program ids disagree. Every instruction would fail with 4100." >&2
+  echo "Fix declare_id! and Anchor.toml to the deployed addresses, rebuild, redeploy." >&2
+  exit 1
+fi
+
 # ------------------------------------------------------------ verify against chain
 
 if [[ -n "$NETWORK" ]]; then

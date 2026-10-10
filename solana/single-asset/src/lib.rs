@@ -38,7 +38,10 @@ use piron_core::single_asset::{calc, flow, lifecycle, validate};
 use piron_core::types::PoolStatus;
 use state::{to_u64, Pool, Position};
 
-declare_id!("ZmF2NjKuiRrE8NYG7Kou1BzBPRV6VYRsXsUCqLpjBmR");
+// The live devnet address. Anchor compares this against the address the program is
+// actually running at and refuses the instruction if they differ, so a placeholder here
+// is not a TODO — it is a program nothing can call. See solana/Anchor.toml.
+declare_id!("3vYqiPnknt7dpzxXmioKsfNqK8rW8oX6tDFFa1E6LVeN");
 
 /// Maps a core error onto a raw custom program error.
 ///
