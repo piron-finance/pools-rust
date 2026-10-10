@@ -1,0 +1,2299 @@
+{
+  "address": "PironStab1e11111111111111111111111111111111",
+  "metadata": {
+    "name": "piron_stable_yield",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Solana binding for Piron Stable Yield pools. NAV shares, instruments, a ring-buffer withdrawal queue."
+  },
+  "instructions": [
+    {
+      "name": "add_instrument",
+      "docs": [
+        "Records an instrument the SPV has bought with capital already drawn.",
+        "",
+        "Its purchase price leaves the in-flight balance and reappears as a marked holding,",
+        "so NAV does not move. Recording one larger than the capital drawn would clamp the",
+        "balance at zero and leave NAV counting value the pool never had, so it is refused."
+      ],
+      "discriminator": [
+        105,
+        20,
+        159,
+        148,
+        221,
+        16,
+        80,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Read only, for the NAV mirror."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "operator",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "instrument",
+          "type": {
+            "defined": {
+              "name": "InstrumentTerms"
+            }
+          }
+        }
+      ],
+      "returns": "u32"
+    },
+    {
+      "name": "deploy_capital",
+      "docs": [
+        "Sends free cash to the SPV, leaving the reserve intact.",
+        "",
+        "NAV does not move: the cash leaves the vault and reappears as in-flight capital."
+      ],
+      "discriminator": [
+        233,
+        143,
+        38,
+        229,
+        114,
+        162,
+        34,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "queue"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "spv_asset",
+          "writable": true
+        },
+        {
+          "name": "spv",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "deposit",
+      "docs": [
+        "Buys into the pool at today's price."
+      ],
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "queue",
+          "docs": [
+            "Read for pricing: shares are struck against assets net of what the pool already",
+            "owes queued leavers."
+          ]
+        },
+        {
+          "name": "holder_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  104,
+                  111,
+                  108,
+                  100,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  115,
+                  104,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder_asset",
+          "writable": true
+        },
+        {
+          "name": "holder_shares",
+          "writable": true
+        },
+        {
+          "name": "holder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "assets",
+          "type": "u64"
+        }
+      ],
+      "returns": "u64"
+    },
+    {
+      "name": "initialize_pool",
+      "discriminator": [
+        95,
+        180,
+        10,
+        172,
+        84,
+        174,
+        232,
+        40
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset_mint"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  115,
+                  104,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "queue",
+          "docs": [
+            "A client-created keypair account, not a PDA.",
+            "",
+            "This is the one place the design bends to the runtime. A CPI can allocate at most",
+            "10,240 bytes and the queue needs 22,600, and a PDA cannot sign a top-level create,",
+            "so it cannot be a PDA and be this large. The client creates it as an ordinary",
+            "account owned by this program and the pool records its address; anything deriving",
+            "the queue reads `pool.queue` rather than computing a seed."
+          ],
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "spv",
+          "type": "pubkey"
+        },
+        {
+          "name": "treasury",
+          "type": "pubkey"
+        },
+        {
+          "name": "min_investment",
+          "type": "u64"
+        },
+        {
+          "name": "holding_period",
+          "type": "i64"
+        },
+        {
+          "name": "withdrawal_fee_bps",
+          "type": "u32"
+        },
+        {
+          "name": "min_absolute_reserve",
+          "type": "u64"
+        },
+        {
+          "name": "reserve_ratio_bps",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "mature_instrument",
+      "docs": [
+        "Settles a holding at maturity: the proceeds come back and the holding closes.",
+        "",
+        "A return short of face is accepted and shows up as a NAV fall — the pool took a",
+        "loss, and pretending otherwise would misprice every share."
+      ],
+      "discriminator": [
+        88,
+        179,
+        145,
+        69,
+        75,
+        253,
+        38,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "spv_asset",
+          "writable": true
+        },
+        {
+          "name": "spv",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "index",
+          "type": "u32"
+        },
+        {
+          "name": "proceeds",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "process_withdrawals",
+      "docs": [
+        "Settles queued exits in order, from the head, out of vault cash.",
+        "",
+        "The payee accounts ride in `remaining_accounts`, one per request from the head, in",
+        "the same order. Each is checked against the owner recorded on its request — an",
+        "operator picks the accounts, so nothing else stops it redirecting a payout.",
+        "",
+        "The reserve floor does not apply here. It exists so that holders can leave;",
+        "withholding it from the very queue it is held for would be circular."
+      ],
+      "discriminator": [
+        16,
+        191,
+        171,
+        40,
+        159,
+        185,
+        239,
+        160
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "queue",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury_asset",
+          "writable": true
+        },
+        {
+          "name": "operator",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "max_items",
+          "type": "u32"
+        }
+      ],
+      "returns": "u32"
+    },
+    {
+      "name": "record_instrument_coupon",
+      "docs": [
+        "Books a coupon the SPV has collected on a holding.",
+        "",
+        "The cash arrives in the vault and NAV rises by it. The instrument's own mark already",
+        "accrues the coupon between payment dates, so the counter has to move with the money",
+        "— otherwise the same coupon is marked and banked, and NAV counts it twice."
+      ],
+      "discriminator": [
+        98,
+        81,
+        92,
+        71,
+        106,
+        117,
+        22,
+        96
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "spv_asset",
+          "writable": true
+        },
+        {
+          "name": "spv",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "index",
+          "type": "u32"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "refresh_nav_mirror",
+      "docs": [
+        "Re-stamps the stored NAV mirror at the current time.",
+        "",
+        "Permissionless, and deliberately so: it only writes what anyone can already",
+        "compute from the account. Instructions price against a fresh computation",
+        "regardless, so this exists for readers — Solana has no view functions, and",
+        "between mutations the stored figure would otherwise lag the accrual."
+      ],
+      "discriminator": [
+        156,
+        239,
+        43,
+        189,
+        195,
+        116,
+        147,
+        235
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "register_holder",
+      "docs": [
+        "Opens a holding record for an address that received shares by transfer.",
+        "",
+        "Shares are an SPL token and SPL has no transfer hook, so the program cannot see a",
+        "transfer happen. Without this a transferee has no record, the withdrawal",
+        "constraint finds no account, and their shares are unredeemable — money the",
+        "protocol has no way to release.",
+        "",
+        "The clock starts here rather than at zero, so arriving by transfer is not a way",
+        "around the holding period. It is not a complete binding of the period to the",
+        "shares themselves: an address could register early and receive shares later.",
+        "Closing that needs a Token-2022 transfer hook, which is a deployment decision",
+        "rather than a change to this program."
+      ],
+      "discriminator": [
+        113,
+        111,
+        117,
+        246,
+        175,
+        59,
+        98,
+        161
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  104,
+                  111,
+                  108,
+                  100,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "request_withdrawal",
+      "docs": [
+        "Joins the queue to leave. The quote is struck now, at today's price, and the shares",
+        "go with it."
+      ],
+      "discriminator": [
+        251,
+        85,
+        121,
+        205,
+        56,
+        201,
+        12,
+        177
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "queue",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Read only: the quote is struck against marked value plus cash on hand."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  115,
+                  104,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder_shares",
+          "docs": [
+            "Read, not trusted: the quote is struck against the balance the holder actually has."
+          ],
+          "writable": true
+        },
+        {
+          "name": "holder_record",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  104,
+                  111,
+                  108,
+                  100,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "shares",
+          "type": "u64"
+        }
+      ],
+      "returns": "u64"
+    },
+    {
+      "name": "return_capital",
+      "docs": [
+        "Returns capital or yield from the SPV.",
+        "",
+        "Returns retire in-flight capital first; anything beyond it is yield, which shows up",
+        "as a NAV gain rather than driving the outstanding balance below zero."
+      ],
+      "discriminator": [
+        237,
+        35,
+        135,
+        195,
+        132,
+        169,
+        228,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "queue"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "spv_asset",
+          "writable": true
+        },
+        {
+          "name": "spv",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "Leaves the pool in one step, when the vault can cover it and no one is waiting.",
+        "",
+        "Paying straight out while a queue stands would let a holder step in front of people",
+        "who asked first, so this is refused whenever the queue has anything in it."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "queue"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  115,
+                  104,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder_asset",
+          "writable": true
+        },
+        {
+          "name": "holder_shares",
+          "writable": true
+        },
+        {
+          "name": "holder_record",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  104,
+                  111,
+                  108,
+                  100,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury_asset",
+          "writable": true
+        },
+        {
+          "name": "holder",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "shares",
+          "type": "u64"
+        }
+      ],
+      "returns": "u64"
+    },
+    {
+      "name": "write_off_instrument",
+      "docs": [
+        "Writes a holding off the book, for a default or a sale that will not settle.",
+        "",
+        "A holding that is never matured keeps carrying value, and holders would redeem",
+        "against an asset the pool will not receive."
+      ],
+      "discriminator": [
+        6,
+        89,
+        118,
+        137,
+        17,
+        169,
+        188,
+        130
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Read only, for the NAV mirror."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  121,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "index",
+          "type": "u32"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "HolderRecord",
+      "discriminator": [
+        215,
+        67,
+        31,
+        41,
+        155,
+        251,
+        178,
+        128
+      ]
+    },
+    {
+      "name": "StableYieldPool",
+      "discriminator": [
+        49,
+        144,
+        181,
+        1,
+        128,
+        170,
+        199,
+        67
+      ]
+    },
+    {
+      "name": "WithdrawalQueue",
+      "discriminator": [
+        54,
+        56,
+        158,
+        88,
+        232,
+        203,
+        241,
+        163
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CapitalDeployed",
+      "discriminator": [
+        167,
+        153,
+        57,
+        148,
+        27,
+        239,
+        162,
+        35
+      ]
+    },
+    {
+      "name": "CapitalReturned",
+      "discriminator": [
+        102,
+        29,
+        91,
+        89,
+        61,
+        170,
+        63,
+        22
+      ]
+    },
+    {
+      "name": "CouponRecorded",
+      "discriminator": [
+        150,
+        194,
+        182,
+        57,
+        128,
+        37,
+        16,
+        204
+      ]
+    },
+    {
+      "name": "Deposited",
+      "discriminator": [
+        111,
+        141,
+        26,
+        45,
+        161,
+        35,
+        100,
+        57
+      ]
+    },
+    {
+      "name": "HolderRegistered",
+      "discriminator": [
+        201,
+        78,
+        223,
+        133,
+        103,
+        164,
+        173,
+        136
+      ]
+    },
+    {
+      "name": "InstrumentAdded",
+      "discriminator": [
+        60,
+        76,
+        161,
+        52,
+        37,
+        185,
+        161,
+        40
+      ]
+    },
+    {
+      "name": "InstrumentMatured",
+      "discriminator": [
+        212,
+        37,
+        90,
+        83,
+        13,
+        244,
+        156,
+        25
+      ]
+    },
+    {
+      "name": "InstrumentWrittenOff",
+      "discriminator": [
+        94,
+        10,
+        137,
+        23,
+        229,
+        163,
+        205,
+        135
+      ]
+    },
+    {
+      "name": "NavRefreshed",
+      "discriminator": [
+        130,
+        234,
+        64,
+        17,
+        9,
+        238,
+        161,
+        40
+      ]
+    },
+    {
+      "name": "PoolInitialized",
+      "discriminator": [
+        100,
+        118,
+        173,
+        87,
+        12,
+        198,
+        254,
+        229
+      ]
+    },
+    {
+      "name": "WithdrawalRequested",
+      "discriminator": [
+        75,
+        207,
+        21,
+        12,
+        160,
+        102,
+        150,
+        55
+      ]
+    },
+    {
+      "name": "WithdrawalsProcessed",
+      "discriminator": [
+        89,
+        229,
+        25,
+        44,
+        107,
+        64,
+        193,
+        81
+      ]
+    },
+    {
+      "name": "Withdrawn",
+      "discriminator": [
+        20,
+        89,
+        223,
+        198,
+        194,
+        124,
+        219,
+        13
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "CapitalDeployed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "in_flight",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CapitalReturned",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "in_flight",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouponRecorded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Deposited",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "investor",
+            "type": "pubkey"
+          },
+          {
+            "name": "assets",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HolderRecord",
+      "docs": [
+        "When a holder last bought in, so the holding period can be enforced."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "last_deposit_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HolderRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InstrumentAdded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          },
+          {
+            "name": "purchase_price",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InstrumentMatured",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          },
+          {
+            "name": "proceeds",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InstrumentTerms",
+      "docs": [
+        "Terms handed in when a purchase is recorded."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "instrument_type",
+            "docs": [
+              "0 discounted, 1 interest-bearing."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "purchase_price",
+            "type": "u64"
+          },
+          {
+            "name": "face_value",
+            "type": "u64"
+          },
+          {
+            "name": "maturity_date",
+            "type": "i64"
+          },
+          {
+            "name": "annual_coupon_rate",
+            "type": "u32"
+          },
+          {
+            "name": "coupon_frequency",
+            "type": "u32"
+          },
+          {
+            "name": "next_coupon_due_date",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InstrumentWrittenOff",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          },
+          {
+            "name": "written_off",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NavRefreshed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_nav",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool_id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StableYieldPool",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "spv",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "share_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "queue",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool_id",
+            "type": "u64"
+          },
+          {
+            "name": "min_investment",
+            "type": "u64"
+          },
+          {
+            "name": "holding_period",
+            "type": "i64"
+          },
+          {
+            "name": "min_absolute_reserve",
+            "type": "u64"
+          },
+          {
+            "name": "in_flight",
+            "docs": [
+              "Capital drawn by the SPV and not yet placed in an instrument.",
+              "",
+              "NAV counts it: the cash left the vault but still belongs to the pool. The three",
+              "lines — instruments, vault, in flight — sum to NAV, and every transition moves",
+              "value between them rather than creating any."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_nav",
+            "docs": [
+              "Written on every mutation. Solana has no view functions, so a caller reads the",
+              "account rather than calling `total_nav`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "withdrawal_fee_bps",
+            "type": "u32"
+          },
+          {
+            "name": "reserve_ratio_bps",
+            "type": "u32"
+          },
+          {
+            "name": "is_active",
+            "docs": [
+              "1 while the pool accepts deposits. A `u8` because zero-copy needs plain old data."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "instrument_count",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                5
+              ]
+            }
+          },
+          {
+            "name": "instruments",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "StoredInstrument"
+                  }
+                },
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "StoredInstrument",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "spv",
+            "docs": [
+              "Which SPV placed it, so per-SPV attribution survives without an allocation record."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "purchase_price",
+            "type": "u64"
+          },
+          {
+            "name": "face_value",
+            "type": "u64"
+          },
+          {
+            "name": "purchase_date",
+            "type": "i64"
+          },
+          {
+            "name": "maturity_date",
+            "type": "i64"
+          },
+          {
+            "name": "next_coupon_due_date",
+            "type": "i64"
+          },
+          {
+            "name": "annual_coupon_rate",
+            "type": "u32"
+          },
+          {
+            "name": "coupon_frequency",
+            "type": "u32"
+          },
+          {
+            "name": "coupons_paid",
+            "type": "u32"
+          },
+          {
+            "name": "instrument_type",
+            "docs": [
+              "0 discounted, 1 interest-bearing."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                2
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "StoredRequest",
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "request_time",
+            "type": "i64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "estimated_value",
+            "type": "u64"
+          },
+          {
+            "name": "fee_amount",
+            "type": "u64"
+          },
+          {
+            "name": "processed_time",
+            "type": "i64"
+          },
+          {
+            "name": "processed",
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "WithdrawalQueue",
+      "docs": [
+        "The withdrawal ring. Its own account, because 256 entries exceed what a CPI can create."
+      ],
+      "serialization": "bytemuck",
+      "repr": {
+        "kind": "c"
+      },
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "head",
+            "docs": [
+              "Next request to serve."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "tail",
+            "docs": [
+              "Next slot to write."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_pending_value",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "_pad",
+            "type": {
+              "array": [
+                "u8",
+                7
+              ]
+            }
+          },
+          {
+            "name": "requests",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "StoredRequest"
+                  }
+                },
+                256
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "WithdrawalRequested",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "request_id",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WithdrawalsProcessed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "processed",
+            "type": "u32"
+          },
+          {
+            "name": "total_paid",
+            "type": "u64"
+          },
+          {
+            "name": "new_head",
+            "type": "u64"
+          },
+          {
+            "name": "stopped_for_liquidity",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Withdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "assets",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,1650 @@
+{
+  "address": "Piron11111111111111111111111111111111111111",
+  "metadata": {
+    "name": "piron_single_asset",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Solana binding for Piron Single-Asset pools. Accounts, PDAs, signers, CPI."
+  },
+  "instructions": [
+    {
+      "name": "claim_coupon",
+      "docs": [
+        "Claims a holder's share of distributed coupons.",
+        "",
+        "Shares are read from the holder's token account rather than taken as an argument.",
+        "The scaffold trusted a caller-supplied figure, which would have let anyone claim",
+        "against a balance they did not hold."
+      ],
+      "discriminator": [
+        210,
+        153,
+        241,
+        46,
+        195,
+        18,
+        161,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "share_mint"
+        },
+        {
+          "name": "holder_shares",
+          "docs": [
+            "Read, not trusted. The scaffold took the holder's balance as an argument, which",
+            "would have let anyone claim against a balance they did not hold."
+          ]
+        },
+        {
+          "name": "holder_asset",
+          "writable": true
+        },
+        {
+          "name": "holder",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [],
+      "returns": "u64"
+    },
+    {
+      "name": "close_epoch",
+      "docs": [
+        "Closes the funding epoch: on to investment, or to emergency if underfunded."
+      ],
+      "discriminator": [
+        13,
+        87,
+        7,
+        133,
+        109,
+        14,
+        83,
+        25
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "confirm_investment",
+      "docs": [
+        "Confirms what the SPV deployed, fixing face value and the discount to accrue."
+      ],
+      "discriminator": [
+        170,
+        130,
+        160,
+        25,
+        130,
+        147,
+        100,
+        220
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "actual_amount",
+          "type": "u64"
+        },
+        {
+          "name": "proof",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "declare_emergency",
+      "docs": [
+        "Halts the pool and opens refunds.",
+        "",
+        "Only while the escrow is still whole. The refund pays one unit per share, which is",
+        "right when nothing has been invested and wrong the moment it has: against a vault",
+        "already drawn down, the first claimants take par and the rest find nothing."
+      ],
+      "discriminator": [
+        7,
+        213,
+        100,
+        250,
+        62,
+        3,
+        42,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "trigger",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "deposit",
+      "docs": [
+        "Buys into the pool during the funding window. Shares are struck 1:1."
+      ],
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "investor"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "share_mint",
+          "writable": true
+        },
+        {
+          "name": "investor_asset",
+          "writable": true
+        },
+        {
+          "name": "investor_shares",
+          "writable": true
+        },
+        {
+          "name": "investor",
+          "docs": [
+            "The analogue of `investor.require_auth()` on Soroban."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "assets",
+          "type": "u64"
+        }
+      ],
+      "returns": "u64"
+    },
+    {
+      "name": "distribute_coupons",
+      "docs": [
+        "Makes received coupons claimable by holders."
+      ],
+      "discriminator": [
+        141,
+        132,
+        99,
+        141,
+        173,
+        27,
+        151,
+        97
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [],
+      "returns": "u64"
+    },
+    {
+      "name": "initialize_pool",
+      "docs": [
+        "Creates the pool, its vault and its share mint in one transaction.",
+        "",
+        "Soroban's factory deploys a contract per pool. Here one program serves every pool",
+        "and the pool is a PDA, so \"deploying a pool\" is initialising accounts."
+      ],
+      "discriminator": [
+        95,
+        180,
+        10,
+        172,
+        84,
+        174,
+        232,
+        40
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset_mint"
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "The vault is the Soroban escrow. A program cannot hold tokens, so it holds the",
+            "authority over an account that does."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint",
+          "docs": [
+            "Shares. A plain SPL mint, decimals matched to the asset so one share is one unit",
+            "during funding, and the pool is the only thing that can mint or burn."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  104,
+                  97,
+                  114,
+                  101,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "terms",
+          "type": {
+            "defined": {
+              "name": "PoolTerms"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "mark_filled",
+      "docs": [
+        "Marks the pool filled once the target raise is met. Permissionless: it only",
+        "observes a fact anyone can verify."
+      ],
+      "discriminator": [
+        192,
+        137,
+        170,
+        0,
+        70,
+        5,
+        127,
+        160
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "mark_withdrawn",
+      "docs": [
+        "Closes a fully-redeemed pool."
+      ],
+      "discriminator": [
+        241,
+        61,
+        224,
+        31,
+        80,
+        145,
+        202,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "share_mint"
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "record_coupon",
+      "docs": [
+        "Records a coupon the SPV has paid in."
+      ],
+      "discriminator": [
+        115,
+        238,
+        223,
+        122,
+        100,
+        254,
+        79,
+        245
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "share_mint"
+        },
+        {
+          "name": "spv_asset",
+          "writable": true
+        },
+        {
+          "name": "spv",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "settle_maturity",
+      "docs": [
+        "Settles the deal with what the SPV returned, freezing the redemption divisor."
+      ],
+      "discriminator": [
+        36,
+        39,
+        73,
+        207,
+        171,
+        172,
+        213,
+        77
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "share_mint"
+        },
+        {
+          "name": "spv_asset",
+          "writable": true
+        },
+        {
+          "name": "spv",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "final_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "Redeems a holder's position. Which path applies depends on the pool's status."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "share_mint",
+          "writable": true
+        },
+        {
+          "name": "holder_shares",
+          "writable": true
+        },
+        {
+          "name": "holder_asset",
+          "writable": true
+        },
+        {
+          "name": "treasury_asset",
+          "writable": true
+        },
+        {
+          "name": "holder",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "assets",
+          "type": "u64"
+        }
+      ],
+      "returns": "u64"
+    },
+    {
+      "name": "withdraw_for_investment",
+      "docs": [
+        "Releases funds to the SPV to invest."
+      ],
+      "discriminator": [
+        126,
+        52,
+        56,
+        201,
+        5,
+        36,
+        224,
+        210
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "Pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "spv_asset",
+          "writable": true
+        },
+        {
+          "name": "spv",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Pool",
+      "discriminator": [
+        241,
+        154,
+        109,
+        4,
+        17,
+        177,
+        109,
+        188
+      ]
+    },
+    {
+      "name": "Position",
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CouponClaimed",
+      "discriminator": [
+        37,
+        168,
+        115,
+        183,
+        112,
+        176,
+        208,
+        244
+      ]
+    },
+    {
+      "name": "CouponReceived",
+      "discriminator": [
+        84,
+        229,
+        83,
+        89,
+        240,
+        42,
+        129,
+        147
+      ]
+    },
+    {
+      "name": "CouponsDistributed",
+      "discriminator": [
+        180,
+        1,
+        224,
+        140,
+        34,
+        74,
+        176,
+        89
+      ]
+    },
+    {
+      "name": "DepositRecorded",
+      "discriminator": [
+        0,
+        223,
+        90,
+        235,
+        183,
+        248,
+        79,
+        67
+      ]
+    },
+    {
+      "name": "EmergencyDeclared",
+      "discriminator": [
+        27,
+        12,
+        75,
+        139,
+        101,
+        86,
+        54,
+        126
+      ]
+    },
+    {
+      "name": "EpochClosed",
+      "discriminator": [
+        21,
+        4,
+        48,
+        56,
+        29,
+        169,
+        77,
+        42
+      ]
+    },
+    {
+      "name": "FundsWithdrawnBySpv",
+      "discriminator": [
+        157,
+        104,
+        137,
+        96,
+        171,
+        17,
+        48,
+        29
+      ]
+    },
+    {
+      "name": "InvestmentConfirmed",
+      "discriminator": [
+        55,
+        75,
+        157,
+        58,
+        109,
+        102,
+        183,
+        255
+      ]
+    },
+    {
+      "name": "MaturitySettled",
+      "discriminator": [
+        177,
+        161,
+        9,
+        98,
+        227,
+        200,
+        223,
+        94
+      ]
+    },
+    {
+      "name": "PoolInitialized",
+      "discriminator": [
+        100,
+        118,
+        173,
+        87,
+        12,
+        198,
+        254,
+        229
+      ]
+    },
+    {
+      "name": "PoolWithdrawal",
+      "discriminator": [
+        238,
+        212,
+        125,
+        61,
+        189,
+        201,
+        160,
+        146
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "CouponClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "type": "pubkey"
+          },
+          {
+            "name": "claimable",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouponReceived",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "total_received",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CouponsDistributed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DepositRecorded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "investor",
+            "type": "pubkey"
+          },
+          {
+            "name": "assets",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "total_raised",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EmergencyDeclared",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "trigger",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EpochClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "underfunded",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FundsWithdrawnBySpv",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InvestmentConfirmed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "actual_amount",
+            "type": "u64"
+          },
+          {
+            "name": "proof",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MaturitySettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "final_amount",
+            "type": "u64"
+          },
+          {
+            "name": "shares_at_maturity",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pool",
+      "docs": [
+        "Pool terms and running state. One account per pool, at",
+        "`[POOL_SEED, pool_id.to_le_bytes()]`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool_id",
+            "type": "u64"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "spv",
+            "docs": [
+              "The SPV wallet permitted to draw funds and settle. Held per pool so it can be",
+              "rotated without redeploying, matching how the Solidity passes it at creation."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "asset_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "docs": [
+              "The token account holding the asset. A program cannot hold tokens; it holds the",
+              "authority over an account that does."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "share_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Where withdrawal fees go. Recorded here so the destination is protocol state",
+              "rather than something the withdrawing caller supplies."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "instrument_type",
+            "type": "u8"
+          },
+          {
+            "name": "face_value",
+            "type": "u64"
+          },
+          {
+            "name": "purchase_price",
+            "type": "u64"
+          },
+          {
+            "name": "target_raise",
+            "type": "u64"
+          },
+          {
+            "name": "epoch_end_time",
+            "type": "i64"
+          },
+          {
+            "name": "maturity_date",
+            "type": "i64"
+          },
+          {
+            "name": "coupon_count",
+            "type": "u8"
+          },
+          {
+            "name": "coupon_dates",
+            "type": {
+              "array": [
+                "i64",
+                24
+              ]
+            }
+          },
+          {
+            "name": "coupon_rates",
+            "type": {
+              "array": [
+                "u32",
+                24
+              ]
+            }
+          },
+          {
+            "name": "discount_rate",
+            "type": "u32"
+          },
+          {
+            "name": "minimum_funding_threshold",
+            "type": "u32"
+          },
+          {
+            "name": "min_investment",
+            "type": "u64"
+          },
+          {
+            "name": "withdrawal_fee_bps",
+            "type": "u32"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "total_raised",
+            "type": "u64"
+          },
+          {
+            "name": "actual_invested",
+            "type": "u64"
+          },
+          {
+            "name": "total_discount_earned",
+            "type": "u64"
+          },
+          {
+            "name": "total_coupons_received",
+            "type": "u64"
+          },
+          {
+            "name": "total_coupons_distributed",
+            "type": "u64"
+          },
+          {
+            "name": "total_coupons_claimed",
+            "type": "u64"
+          },
+          {
+            "name": "funds_withdrawn_by_spv",
+            "type": "u64"
+          },
+          {
+            "name": "funds_returned_by_spv",
+            "type": "u64"
+          },
+          {
+            "name": "total_fees_collected",
+            "type": "u64"
+          },
+          {
+            "name": "shares_at_maturity",
+            "docs": [
+              "Share supply frozen at settlement. Redemption divides by this, not live supply."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pool_value",
+            "docs": [
+              "What the pool is worth right now, written on every mutation.",
+              "",
+              "Soroban exposes this as `pool_value()`, a call. Solana has no view functions — a",
+              "client fetches the account and reads it — so anything a caller needs has to be",
+              "stored. Recomputing it client-side would work until the client and the program",
+              "disagreed about what the pool was worth at the moment it moved money, which",
+              "surfaces as an argument about a share price rather than an error."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool_id",
+            "type": "u64"
+          },
+          {
+            "name": "asset_mint",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolTerms",
+      "docs": [
+        "Terms handed in at creation. A struct rather than fifteen arguments, because Solana",
+        "instruction data is borsh and the argument list is the ABI."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "spv",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "instrument_type",
+            "type": "u8"
+          },
+          {
+            "name": "purchase_price",
+            "type": "u64"
+          },
+          {
+            "name": "target_raise",
+            "type": "u64"
+          },
+          {
+            "name": "epoch_end_time",
+            "type": "i64"
+          },
+          {
+            "name": "maturity_date",
+            "type": "i64"
+          },
+          {
+            "name": "coupon_count",
+            "type": "u8"
+          },
+          {
+            "name": "coupon_dates",
+            "type": {
+              "array": [
+                "i64",
+                24
+              ]
+            }
+          },
+          {
+            "name": "coupon_rates",
+            "type": {
+              "array": [
+                "u32",
+                24
+              ]
+            }
+          },
+          {
+            "name": "discount_rate",
+            "type": "u32"
+          },
+          {
+            "name": "minimum_funding_threshold",
+            "type": "u32"
+          },
+          {
+            "name": "min_investment",
+            "type": "u64"
+          },
+          {
+            "name": "withdrawal_fee_bps",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolWithdrawal",
+      "docs": [
+        "The event the indexer counts positions from. `kind` mirrors the Solidity:",
+        "0 funding-phase refund, 1 matured redemption, 2 emergency exit."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "assets",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "kind",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "docs": [
+        "Per-investor accounting. One account per (pool, investor), at",
+        "`[POSITION_SEED, pool.key(), investor.key()]`.",
+        "",
+        "The Soroban equivalent is a Persistent entry under `DataKey::User(Address)`. Same",
+        "idea; here the address is derived and the account must be created and rent-funded",
+        "before first use."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "deposit_time",
+            "type": "i64"
+          },
+          {
+            "name": "coupons_claimed",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "docs": [
+              "Shares subscribed through this position.",
+              "",
+              "Coupon entitlement is struck on this, not on the holder's live token balance.",
+              "The balance is a number anyone can move between accounts, and an entitlement",
+              "derived from it resets every time it moves — so the same coupon could be claimed",
+              "once per address the shares passed through. This figure only the program writes."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
