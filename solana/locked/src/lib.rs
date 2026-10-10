@@ -23,7 +23,7 @@ pub mod state;
 use piron_core::locked::{calc, lifecycle, types as lt, validate};
 use state::{to_u64, LockedPool, LockedPosition, StoredTier, MAX_TIERS};
 
-declare_id!("PironLock1111111111111111111111111111111111");
+declare_id!("FRKEuWHh8pX4ZReGACVFQv2pB9b3DNVdthqHhdwBTBkh");
 
 fn map_err(err: piron_core::Error) -> Error {
     Error::from(ProgramError::Custom(err.code()))

@@ -28,7 +28,7 @@ use state::{
     MAX_INSTRUMENTS,
 };
 
-declare_id!("PironStab1e11111111111111111111111111111111");
+declare_id!("GG3TwC8y744PqjSm7fBu1oa8j6jcuw7DEP6RVyvtMea");
 
 fn map_err(err: piron_core::Error) -> Error {
     Error::from(ProgramError::Custom(err.code()))

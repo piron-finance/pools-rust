@@ -1,0 +1,1894 @@
+[
+  {
+    "udt_error_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Error",
+      "cases": [
+        {
+          "doc": "",
+          "name": "Overflow",
+          "value": 100
+        },
+        {
+          "doc": "",
+          "name": "DivisionByZero",
+          "value": 101
+        },
+        {
+          "doc": "",
+          "name": "NegativeAmount",
+          "value": 102
+        },
+        {
+          "doc": "",
+          "name": "InvalidAmount",
+          "value": 103
+        },
+        {
+          "doc": "",
+          "name": "InvalidBps",
+          "value": 104
+        },
+        {
+          "doc": "",
+          "name": "NotFundingPhase",
+          "value": 200
+        },
+        {
+          "doc": "",
+          "name": "FundingEnded",
+          "value": 201
+        },
+        {
+          "doc": "",
+          "name": "BelowMinInvestment",
+          "value": 202
+        },
+        {
+          "doc": "",
+          "name": "ExceedsTargetRaise",
+          "value": 203
+        },
+        {
+          "doc": "",
+          "name": "WithdrawalsNotAllowed",
+          "value": 204
+        },
+        {
+          "doc": "",
+          "name": "NotInvested",
+          "value": 205
+        },
+        {
+          "doc": "",
+          "name": "NotMatured",
+          "value": 206
+        },
+        {
+          "doc": "",
+          "name": "NotInterestBearing",
+          "value": 207
+        },
+        {
+          "doc": "",
+          "name": "NotDiscounted",
+          "value": 208
+        },
+        {
+          "doc": "",
+          "name": "NoSharesOutstanding",
+          "value": 209
+        },
+        {
+          "doc": "",
+          "name": "NoShares",
+          "value": 210
+        },
+        {
+          "doc": "",
+          "name": "NoCouponsToDistribute",
+          "value": 211
+        },
+        {
+          "doc": "",
+          "name": "NoCouponsDistributed",
+          "value": 212
+        },
+        {
+          "doc": "",
+          "name": "NoNewCoupons",
+          "value": 213
+        },
+        {
+          "doc": "",
+          "name": "InvalidDiscountRate",
+          "value": 214
+        },
+        {
+          "doc": "",
+          "name": "NotInEmergency",
+          "value": 215
+        },
+        {
+          "doc": "",
+          "name": "MaturityNotReached",
+          "value": 216
+        },
+        {
+          "doc": "",
+          "name": "CouponScheduleTooLong",
+          "value": 217
+        },
+        {
+          "doc": "",
+          "name": "CouponScheduleMismatch",
+          "value": 218
+        },
+        {
+          "doc": "",
+          "name": "InvalidMaturityDate",
+          "value": 219
+        },
+        {
+          "doc": "",
+          "name": "TargetNotReached",
+          "value": 220
+        },
+        {
+          "doc": "",
+          "name": "EpochNotEnded",
+          "value": 221
+        },
+        {
+          "doc": "",
+          "name": "NotPendingInvestment",
+          "value": 222
+        },
+        {
+          "doc": "",
+          "name": "InvestmentExceedsRaised",
+          "value": 223
+        },
+        {
+          "doc": "",
+          "name": "CouponDateInPast",
+          "value": 224
+        },
+        {
+          "doc": "",
+          "name": "SharesStillOutstanding",
+          "value": 225
+        },
+        {
+          "doc": "",
+          "name": "InsufficientShares",
+          "value": 226
+        },
+        {
+          "doc": "",
+          "name": "InsufficientPoolBalance",
+          "value": 227
+        },
+        {
+          "doc": "",
+          "name": "ExceedsRefundAmount",
+          "value": 228
+        },
+        {
+          "doc": "",
+          "name": "InvalidStatusForOperation",
+          "value": 229
+        },
+        {
+          "doc": "",
+          "name": "InvalidTier",
+          "value": 300
+        },
+        {
+          "doc": "",
+          "name": "InvalidTierDuration",
+          "value": 301
+        },
+        {
+          "doc": "",
+          "name": "TierApyTooHigh",
+          "value": 302
+        },
+        {
+          "doc": "",
+          "name": "TierPenaltyTooHigh",
+          "value": 303
+        },
+        {
+          "doc": "",
+          "name": "TierInactive",
+          "value": 304
+        },
+        {
+          "doc": "",
+          "name": "InterestExceedsPrincipal",
+          "value": 305
+        },
+        {
+          "doc": "",
+          "name": "PositionAlreadyRedeemed",
+          "value": 306
+        },
+        {
+          "doc": "",
+          "name": "PositionAlreadyExited",
+          "value": 307
+        },
+        {
+          "doc": "",
+          "name": "PositionNotMatured",
+          "value": 308
+        },
+        {
+          "doc": "",
+          "name": "PositionNotRedeemable",
+          "value": 309
+        },
+        {
+          "doc": "",
+          "name": "PositionAlreadyMatured",
+          "value": 310
+        },
+        {
+          "doc": "",
+          "name": "PositionNotActive",
+          "value": 311
+        },
+        {
+          "doc": "",
+          "name": "PositionNotFound",
+          "value": 312
+        },
+        {
+          "doc": "",
+          "name": "InvalidCouponFrequency",
+          "value": 400
+        },
+        {
+          "doc": "",
+          "name": "InvalidNavPerShare",
+          "value": 401
+        },
+        {
+          "doc": "",
+          "name": "PoolInactive",
+          "value": 402
+        },
+        {
+          "doc": "",
+          "name": "HoldingPeriodNotMet",
+          "value": 403
+        },
+        {
+          "doc": "",
+          "name": "InsufficientLiquidity",
+          "value": 404
+        },
+        {
+          "doc": "",
+          "name": "ReserveBreached",
+          "value": 405
+        },
+        {
+          "doc": "",
+          "name": "RequestAlreadyProcessed",
+          "value": 406
+        },
+        {
+          "doc": "",
+          "name": "RequestExpired",
+          "value": 407
+        },
+        {
+          "doc": "",
+          "name": "QueueEmpty",
+          "value": 408
+        },
+        {
+          "doc": "",
+          "name": "BatchTooLarge",
+          "value": 409
+        },
+        {
+          "doc": "",
+          "name": "InvalidSplitRatio",
+          "value": 600
+        },
+        {
+          "doc": "",
+          "name": "FeeTypeInactive",
+          "value": 601
+        },
+        {
+          "doc": "",
+          "name": "RoleDelayNotElapsed",
+          "value": 602
+        },
+        {
+          "doc": "",
+          "name": "ProposalNotFound",
+          "value": 603
+        },
+        {
+          "doc": "",
+          "name": "ProposalAlreadyExecuted",
+          "value": 604
+        },
+        {
+          "doc": "",
+          "name": "ProposalCancelled",
+          "value": 605
+        },
+        {
+          "doc": "",
+          "name": "DeploymentFinalized",
+          "value": 606
+        },
+        {
+          "doc": "",
+          "name": "DeploymentNotFinalized",
+          "value": 607
+        },
+        {
+          "doc": "",
+          "name": "RoleNotHeld",
+          "value": 608
+        },
+        {
+          "doc": "",
+          "name": "CannotRenounce",
+          "value": 609
+        },
+        {
+          "doc": "",
+          "name": "PoolNotRegistered",
+          "value": 610
+        },
+        {
+          "doc": "",
+          "name": "AssetNotApproved",
+          "value": 611
+        },
+        {
+          "doc": "",
+          "name": "SpvNotAuthorized",
+          "value": 612
+        },
+        {
+          "doc": "",
+          "name": "AlreadyRegistered",
+          "value": 613
+        },
+        {
+          "doc": "",
+          "name": "ProtocolPaused",
+          "value": 614
+        },
+        {
+          "doc": "",
+          "name": "UnknownRole",
+          "value": 615
+        },
+        {
+          "doc": "",
+          "name": "UnknownFeeType",
+          "value": 616
+        },
+        {
+          "doc": "The address holds shares but has never opened a holding record.",
+          "name": "NotRegistered",
+          "value": 626
+        },
+        {
+          "doc": "",
+          "name": "UpgradeDelayNotElapsed",
+          "value": 617
+        },
+        {
+          "doc": "",
+          "name": "UpgradeExpired",
+          "value": 618
+        },
+        {
+          "doc": "",
+          "name": "UpgradeAlreadyExecuted",
+          "value": 619
+        },
+        {
+          "doc": "",
+          "name": "UpgradeCancelled",
+          "value": 620
+        },
+        {
+          "doc": "",
+          "name": "UpgradesPaused",
+          "value": 621
+        },
+        {
+          "doc": "",
+          "name": "UpgradeNotFound",
+          "value": 622
+        },
+        {
+          "doc": "",
+          "name": "ReserveFloorBreached",
+          "value": 623
+        },
+        {
+          "doc": "",
+          "name": "RepaymentExceedsLoan",
+          "value": 624
+        },
+        {
+          "doc": "",
+          "name": "InsufficientReserve",
+          "value": 625
+        },
+        {
+          "doc": "",
+          "name": "NotInitialized",
+          "value": 700
+        },
+        {
+          "doc": "",
+          "name": "Unauthorized",
+          "value": 701
+        },
+        {
+          "doc": "",
+          "name": "NotRequestOwner",
+          "value": 705
+        },
+        {
+          "doc": "",
+          "name": "TooManyInstruments",
+          "value": 706
+        },
+        {
+          "doc": "",
+          "name": "InstrumentNotFound",
+          "value": 707
+        },
+        {
+          "doc": "",
+          "name": "ExceedsInFlight",
+          "value": 708
+        },
+        {
+          "doc": "",
+          "name": "InvalidCouponRate",
+          "value": 709
+        },
+        {
+          "doc": "",
+          "name": "AlreadyBound",
+          "value": 715
+        }
+      ]
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Deposit",
+      "prefix_topics": [
+        "deposit"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "receiver",
+          "type_": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "assets",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "shares",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "nav_per_share",
+          "type_": "i128",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "NavUpdated",
+      "prefix_topics": [
+        "nav_updated"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "total_nav",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "nav_per_share",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "total_shares",
+          "type_": "i128",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "CouponReceived",
+      "prefix_topics": [
+        "coupon_received"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "index",
+          "type_": "u32",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "coupons_paid",
+          "type_": "u32",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "InstrumentAdded",
+      "prefix_topics": [
+        "instrument_added"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "index",
+          "type_": "u32",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "face_value",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "maturity_date",
+          "type_": "u64",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "HolderRegistered",
+      "prefix_topics": [
+        "holder_registered"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address",
+          "location": "topic_list"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "InstrumentMatured",
+      "prefix_topics": [
+        "instrument_matured"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "index",
+          "type_": "u32",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "proceeds",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "face_value",
+          "type_": "i128",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "WithdrawalRequested",
+      "prefix_topics": [
+        "withdrawal_requested"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "request_id",
+          "type_": "u64",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "shares",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "estimated_value",
+          "type_": "i128",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "WithdrawalsProcessed",
+      "prefix_topics": [
+        "withdrawals_processed"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "processed",
+          "type_": "u32",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "total_paid",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "new_head",
+          "type_": "u64",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "stopped_for_liquidity",
+          "type_": "bool",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Buys into the pool at today's price.",
+      "name": "deposit",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "investor",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "assets",
+          "type_": "i128"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "i128",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Replaces this contract's code. Only the bound upgrader may call it.",
+      "name": "upgrade",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "wasm_hash",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Who may upgrade this contract, if anyone yet.",
+      "name": "upgrader",
+      "inputs": [],
+      "outputs": [
+        {
+          "option": {
+            "value_type": "address"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Capital with the SPV that has not yet been recorded as an instrument.",
+      "name": "in_flight",
+      "inputs": [],
+      "outputs": [
+        "i128"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "shares_of",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "who",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        "i128"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Everything the pool is worth: instruments marked to model, plus escrow cash.",
+      "name": "total_nav",
+      "inputs": [],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "i128",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Cash free to deploy without breaching the reserve.",
+      "name": "deployable",
+      "inputs": [],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "i128",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "share_token",
+      "inputs": [],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "address",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "queue_length",
+      "inputs": [],
+      "outputs": [
+        "u64"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "total_supply",
+      "inputs": [],
+      "outputs": [
+        "i128"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "__constructor",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "roles",
+          "type_": {
+            "udt": {
+              "name": "Roles"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "escrow",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "config",
+          "type_": {
+            "udt": {
+              "name": "Config"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "share",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Names the contract permitted to upgrade this one. Callable once.\\n\\nOne-way on purpose: a contract whose upgrader could be repointed has no timelock,\\nonly the appearance of one.",
+      "name": "bind_upgrader",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "upgrader",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "What a holder's stake is worth at today's price.",
+      "name": "holding_value",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "who",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "i128",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Price of one share, scaled by 1e18.",
+      "name": "nav_per_share",
+      "inputs": [],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "i128",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Cash already owed to holders who have queued to leave.",
+      "name": "queue_pending",
+      "inputs": [],
+      "outputs": [
+        "i128"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Records an instrument the manager has bought.",
+      "name": "add_instrument",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "instrument",
+          "type_": {
+            "udt": {
+              "name": "StoredInstrument"
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "u32",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Sends free cash to an SPV, leaving the reserve intact.",
+      "name": "deploy_capital",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns capital or yield from an SPV into the pool.",
+      "name": "return_capital",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Opens a holding record for an address that received shares by transfer.\\n\\nThe clock starts here rather than at zero, so arriving by transfer is not a way\\naround the holding period.",
+      "name": "register_holder",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "holder",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Closes out an instrument that has matured or been sold.",
+      "name": "close_instrument",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "index",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "instrument_count",
+      "inputs": [],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Settles a holding at maturity: the proceeds come back and the instrument closes.\\n\\nA return short of face value is accepted and shows up as a NAV fall \\xe2\\x80\\x94 the pool\\ntook a loss, and pretending otherwise would misprice every share.",
+      "name": "mature_instrument",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "index",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "proceeds",
+          "type_": "i128"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Joins the queue to leave. Shares are held until the request is served.",
+      "name": "request_withdrawal",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "shares",
+          "type_": "i128"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "u64",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Settles up to `max_items` queued exits, in order, from free cash.\\n\\nFree cash means escrow balance above the reserve floor \\xe2\\x80\\x94 a pool must not empty\\nitself serving the queue and leave nothing for the next redemption.",
+      "name": "process_withdrawals",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "max_items",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "u32",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Records a coupon paid on a holding.\\n\\nThe cash comes into the escrow and the instrument's clock advances, so NAV stops\\naccruing the coupon it has now actually received and starts accruing the next one.",
+      "name": "record_instrument_coupon",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "index",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Roles"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Escrow"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Asset"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Config"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "The whole portfolio, in one entry.",
+            "name": "Instruments"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Share"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "QueueHead"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "QueueTail"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "QueuePending"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Capital with the SPV that has not yet been recorded as an instrument.\\n\\nWithout this, `deploy_capital` would shrink NAV the moment funds left the escrow,\\nunderstating the pool until the operator records what was bought \\xe2\\x80\\x94 and the reserve\\nratio, computed against that understated NAV, would release more capital than it\\nshould. This is the counterpart of the Solidity's `PendingAllocation`.",
+            "name": "DeployedOutstanding"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "Shares",
+            "type_": [
+              "address"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "DepositTime",
+            "type_": [
+              "address"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "Request",
+            "type_": [
+              "u64"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Addresses permitted to drive a pool.\\n\\nA placeholder for the full seven-role `AccessManager`: these are the roles a pool's own\\nlifecycle needs, resolved once at construction rather than looked up per call.",
+      "lib": "",
+      "name": "Roles",
+      "fields": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "emergency",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "operator",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "spv",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "treasury",
+          "type_": "address"
+        },
+        {
+          "doc": "The only address permitted to replace this pool's bytecode, bound at construction.\\n\\nSoroban claims upgrade authority once and irrevocably, so an unbound slot is not\\nmerely \"not upgradeable yet\" \\xe2\\x80\\x94 it is a slot anyone with the admin role can claim\\nfor themselves, permanently, on a pool already holding funds. Binding it in the\\nconstructor closes that window rather than leaving it to an operational step\\nsomebody has to remember.\\n\\nThe factory overwrites whatever a pool creator passes with the timelock it was\\nconfigured with, so this cannot be used to name a different authority.",
+          "name": "upgrader",
+          "type_": "address"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Config",
+      "fields": [
+        {
+          "doc": "Seconds a depositor must stay in before they may queue to leave.",
+          "name": "holding_period",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "min_absolute_reserve",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "min_investment",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "reserve_ratio_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "withdrawal_fee_bps",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "Which kind of pool a registration describes.\\n\\nShared rather than owned by the registry, because the factory has to name it when it\\nregisters a pool it just built.",
+      "lib": "",
+      "name": "PoolType",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "SingleAsset"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Locked"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "StableYield"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredTier",
+      "fields": [
+        {
+          "doc": "",
+          "name": "apy_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "duration_days",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "early_exit_penalty_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "min_deposit",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredUser",
+      "fields": [
+        {
+          "doc": "",
+          "name": "coupons_claimed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "deposit_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "Shares subscribed through this pool.\\n\\nCoupon entitlement is struck on this, not on the holder's live share balance. A\\nbalance is a number anyone can move between addresses, and an entitlement derived\\nfrom it resets every time it moves \\xe2\\x80\\x94 so the same coupon could be claimed once per\\naddress the shares passed through. This figure only the manager writes.",
+          "name": "shares",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredState",
+      "fields": [
+        {
+          "doc": "",
+          "name": "actual_invested",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "funds_returned_by_spv",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "funds_withdrawn_by_spv",
+          "type_": "i128"
+        },
+        {
+          "doc": "Share supply frozen at settlement. Redemption divides by this, not live supply.",
+          "name": "shares_at_maturity",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "status",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "total_coupons_claimed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_coupons_distributed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_coupons_received",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_discount_earned",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_fees_collected",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_raised",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredConfig",
+      "fields": [
+        {
+          "doc": "",
+          "name": "coupon_dates",
+          "type_": {
+            "vec": {
+              "element_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "coupon_rates",
+          "type_": {
+            "vec": {
+              "element_type": "u32"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "discount_rate",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "epoch_end_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "face_value",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "instrument_type",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "maturity_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "min_investment",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "minimum_funding_threshold",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "purchase_price",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "target_raise",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "withdrawal_fee_bps",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredMetrics",
+      "fields": [
+        {
+          "doc": "",
+          "name": "active_positions",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "interest_pending_maturity",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_interest_committed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_interest_paid_upfront",
+          "type_": "i128"
+        },
+        {
+          "doc": "Capital currently with the SPV.",
+          "name": "total_invested",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_positions",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "total_principal_locked",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredRequest",
+      "fields": [
+        {
+          "doc": "",
+          "name": "deadline",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "estimated_value",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "fee_amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "processed",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "processed_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "request_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "shares",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredPosition",
+      "fields": [
+        {
+          "doc": "",
+          "name": "actual_payout",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "apy_bps_at_deposit",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "auto_rollover",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "expected_maturity_payout",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "full_interest_amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "interest_earned",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "interest_paid",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "invested_amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "lock_end",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "lock_start",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "0 = upfront, 1 = at maturity.",
+          "name": "payment_choice",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "penalty_paid",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "principal_deposited",
+          "type_": "i128"
+        },
+        {
+          "doc": "Matches `PositionStatus` ordering.",
+          "name": "status",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "tier_index",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredInstrument",
+      "fields": [
+        {
+          "doc": "",
+          "name": "annual_coupon_rate",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "coupon_frequency",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "coupons_paid",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "face_value",
+          "type_": "i128"
+        },
+        {
+          "doc": "0 = discounted, 1 = interest-bearing.",
+          "name": "instrument_type",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "maturity_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "next_coupon_due_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "purchase_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "purchase_price",
+          "type_": "i128"
+        }
+      ]
+    }
+  }
+]

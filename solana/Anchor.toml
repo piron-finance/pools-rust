@@ -1,21 +1,20 @@
-# Exists so `anchor idl build` can emit an IDL per program — the IDL is the ABI any
-# client needs, and `cargo-build-sbf` does not produce one. Builds still go through
-# cargo-build-sbf; this file is not here to take the build over.
-#
-# The programs stay outside the Rust workspace (see ../Cargo.toml) because cargo-build-sbf
-# manages its own toolchain. Anchor is content to treat them as members from here.
-
 [toolchain]
 anchor_version = "1.1.2"
 
-[workspace]
-members = ["single-asset", "locked", "stable-yield"]
+[features]
+resolution = true
+skip-lint = false
 
 [programs.devnet]
-piron_single_asset_solana = "3vYqiPnknt7dpzxXmioKsfNqK8rW8oX6tDFFa1E6LVeN"
-piron_locked_solana = "5u4jwH1Rug5b356G3CxxMPbNGH21RexZbaE3wGPc6Yv6"
-piron_stable_yield_solana = "13b1FcFBAnGEX4ocCrPp1dUx2MmbwuQEK5nHRxv75K1g"
+piron_locked_solana = "FRKEuWHh8pX4ZReGACVFQv2pB9b3DNVdthqHhdwBTBkh"
+piron_single_asset_solana = "ZmF2NjKuiRrE8NYG7Kou1BzBPRV6VYRsXsUCqLpjBmR"
+piron_stable_yield_solana = "GG3TwC8y744PqjSm7fBu1oa8j6jcuw7DEP6RVyvtMea"
 
 [provider]
 cluster = "devnet"
 wallet = "~/.config/solana/id.json"
+
+[workspace]
+members = ["single-asset", "locked", "stable-yield"]
+
+[hooks]

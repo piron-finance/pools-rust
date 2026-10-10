@@ -1,0 +1,1166 @@
+[
+  {
+    "udt_error_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Error",
+      "cases": [
+        {
+          "doc": "",
+          "name": "Overflow",
+          "value": 100
+        },
+        {
+          "doc": "",
+          "name": "InvalidAmount",
+          "value": 103
+        },
+        {
+          "doc": "",
+          "name": "InvalidSplitRatio",
+          "value": 600
+        },
+        {
+          "doc": "",
+          "name": "FeeTypeInactive",
+          "value": 601
+        },
+        {
+          "doc": "",
+          "name": "UnknownFeeType",
+          "value": 616
+        },
+        {
+          "doc": "",
+          "name": "NotInitialized",
+          "value": 700
+        },
+        {
+          "doc": "",
+          "name": "Unauthorized",
+          "value": 701
+        },
+        {
+          "doc": "",
+          "name": "NothingToDistribute",
+          "value": 709
+        },
+        {
+          "doc": "",
+          "name": "DistributionPaused",
+          "value": 710
+        },
+        {
+          "doc": "",
+          "name": "AlreadyBound",
+          "value": 715
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Access"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Destinations"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "DistributionPaused"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "Split",
+            "type_": [
+              "u32"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "Accounting",
+            "type_": [
+              "address"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "Collector",
+            "type_": [
+              "address"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredSplit",
+      "fields": [
+        {
+          "doc": "",
+          "name": "active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "ops_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "reserve_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "treasury_bps",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Where the three shares of a fee go.",
+      "lib": "",
+      "name": "Destinations",
+      "fields": [
+        {
+          "doc": "",
+          "name": "ops",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "reserve",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "treasury",
+          "type_": "address"
+        }
+      ]
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "FeeCollected",
+      "prefix_topics": [
+        "fee_collected"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "pool",
+          "type_": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "fee_type",
+          "type_": "u32",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "SplitUpdated",
+      "prefix_topics": [
+        "split_updated"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "fee_type",
+          "type_": "u32",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "treasury_bps",
+          "type_": "u32",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "reserve_bps",
+          "type_": "u32",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "ops_bps",
+          "type_": "u32",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Running totals for one asset.",
+      "lib": "",
+      "name": "AssetAccounting",
+      "fields": [
+        {
+          "doc": "",
+          "name": "pending_ops",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "pending_reserve",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "pending_treasury",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_collected",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_distributed",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "FeesDistributed",
+      "prefix_topics": [
+        "fees_distributed"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "to_treasury",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "to_reserve",
+          "type_": "i128",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "to_ops",
+          "type_": "i128",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Replaces this contract's code. Only the bound upgrader may call it.",
+      "name": "upgrade",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "wasm_hash",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Who may upgrade this contract, if anyone yet.",
+      "name": "upgrader",
+      "inputs": [],
+      "outputs": [
+        {
+          "option": {
+            "value_type": "address"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Sets how one fee type divides. Admin only.",
+      "name": "set_split",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "fee_type",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "split",
+          "type_": {
+            "udt": {
+              "name": "StoredSplit"
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "split_for",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "fee_type",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "udt": {
+                "name": "StoredSplit"
+              }
+            },
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Sweeps everything pending for one asset out to its three destinations.",
+      "name": "distribute",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "i128",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Takes a fee in and books its three shares.\\n\\nThe tokens move now; the split is recorded now; the payout happens later. That\\nseparation is what lets a pool charge a fee without three transfers on the hot\\npath.",
+      "name": "collect_fee",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "collector",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "pool",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "fee_type",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "is_collector",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "collector",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "__constructor",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "access",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "destinations",
+          "type_": {
+            "udt": {
+              "name": "Destinations"
+            }
+          }
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Names the contract permitted to upgrade this one. Callable once.\\n\\nOne-way on purpose: a contract whose upgrader could be repointed has no timelock,\\nonly the appearance of one.",
+      "name": "bind_upgrader",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "upgrader",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Permits a pool manager to pay fees in. Admin only.",
+      "name": "set_collector",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "collector",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "allowed",
+          "type_": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "accounting_for",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "udt": {
+            "name": "AssetAccounting"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "set_distribution_paused",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "paused",
+          "type_": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Addresses permitted to drive a pool.\\n\\nA placeholder for the full seven-role `AccessManager`: these are the roles a pool's own\\nlifecycle needs, resolved once at construction rather than looked up per call.",
+      "lib": "",
+      "name": "Roles",
+      "fields": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "emergency",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "operator",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "spv",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "treasury",
+          "type_": "address"
+        },
+        {
+          "doc": "The only address permitted to replace this pool's bytecode, bound at construction.\\n\\nSoroban claims upgrade authority once and irrevocably, so an unbound slot is not\\nmerely \"not upgradeable yet\" \\xe2\\x80\\x94 it is a slot anyone with the admin role can claim\\nfor themselves, permanently, on a pool already holding funds. Binding it in the\\nconstructor closes that window rather than leaving it to an operational step\\nsomebody has to remember.\\n\\nThe factory overwrites whatever a pool creator passes with the timelock it was\\nconfigured with, so this cannot be used to name a different authority.",
+          "name": "upgrader",
+          "type_": "address"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Config",
+      "fields": [
+        {
+          "doc": "Seconds a depositor must stay in before they may queue to leave.",
+          "name": "holding_period",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "min_absolute_reserve",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "min_investment",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "reserve_ratio_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "withdrawal_fee_bps",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "Which kind of pool a registration describes.\\n\\nShared rather than owned by the registry, because the factory has to name it when it\\nregisters a pool it just built.",
+      "lib": "",
+      "name": "PoolType",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "SingleAsset"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Locked"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "StableYield"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredTier",
+      "fields": [
+        {
+          "doc": "",
+          "name": "apy_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "duration_days",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "early_exit_penalty_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "min_deposit",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredUser",
+      "fields": [
+        {
+          "doc": "",
+          "name": "coupons_claimed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "deposit_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "Shares subscribed through this pool.\\n\\nCoupon entitlement is struck on this, not on the holder's live share balance. A\\nbalance is a number anyone can move between addresses, and an entitlement derived\\nfrom it resets every time it moves \\xe2\\x80\\x94 so the same coupon could be claimed once per\\naddress the shares passed through. This figure only the manager writes.",
+          "name": "shares",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredState",
+      "fields": [
+        {
+          "doc": "",
+          "name": "actual_invested",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "funds_returned_by_spv",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "funds_withdrawn_by_spv",
+          "type_": "i128"
+        },
+        {
+          "doc": "Share supply frozen at settlement. Redemption divides by this, not live supply.",
+          "name": "shares_at_maturity",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "status",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "total_coupons_claimed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_coupons_distributed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_coupons_received",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_discount_earned",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_fees_collected",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_raised",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredConfig",
+      "fields": [
+        {
+          "doc": "",
+          "name": "coupon_dates",
+          "type_": {
+            "vec": {
+              "element_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "coupon_rates",
+          "type_": {
+            "vec": {
+              "element_type": "u32"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "discount_rate",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "epoch_end_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "face_value",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "instrument_type",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "maturity_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "min_investment",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "minimum_funding_threshold",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "purchase_price",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "target_raise",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "withdrawal_fee_bps",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredMetrics",
+      "fields": [
+        {
+          "doc": "",
+          "name": "active_positions",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "interest_pending_maturity",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_interest_committed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_interest_paid_upfront",
+          "type_": "i128"
+        },
+        {
+          "doc": "Capital currently with the SPV.",
+          "name": "total_invested",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_positions",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "total_principal_locked",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredRequest",
+      "fields": [
+        {
+          "doc": "",
+          "name": "deadline",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "estimated_value",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "fee_amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "processed",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "processed_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "request_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "shares",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredPosition",
+      "fields": [
+        {
+          "doc": "",
+          "name": "actual_payout",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "apy_bps_at_deposit",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "auto_rollover",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "expected_maturity_payout",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "full_interest_amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "interest_earned",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "interest_paid",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "invested_amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "lock_end",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "lock_start",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "0 = upfront, 1 = at maturity.",
+          "name": "payment_choice",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "penalty_paid",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "principal_deposited",
+          "type_": "i128"
+        },
+        {
+          "doc": "Matches `PositionStatus` ordering.",
+          "name": "status",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "tier_index",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredInstrument",
+      "fields": [
+        {
+          "doc": "",
+          "name": "annual_coupon_rate",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "coupon_frequency",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "coupons_paid",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "face_value",
+          "type_": "i128"
+        },
+        {
+          "doc": "0 = discounted, 1 = interest-bearing.",
+          "name": "instrument_type",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "maturity_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "next_coupon_due_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "purchase_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "purchase_price",
+          "type_": "i128"
+        }
+      ]
+    }
+  }
+]
