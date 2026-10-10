@@ -11,6 +11,18 @@ touches them.
 
 Source: `piron-rust`, branch `fix/audit-findings`.
 
+Both are smoke-tested: a real deposit landed on each chain and the books agree. The
+transaction hashes are below, and `scripts/smoke/README.md` says how to re-run them.
+
+```bash
+./scripts/smoke_soroban.sh testnet        # creates a pool, deposits, checks the escrow
+cd scripts/smoke && npm install && node solana.mjs
+```
+
+Run these after every deploy. A deploy script exiting 0 is not evidence a deployment
+works — all three Solana programs sat on devnet for three days unable to execute a single
+instruction while every test passed and the deploy reported success.
+
 ## Where the interfaces are
 
 An interface describes code, not a deployment: one set covers every network running the
@@ -92,6 +104,12 @@ each pool's manager is its own contract, and the backend keys per pool.
 | Share token | `CBRTMSZUER5UPBRCVDNC6ZOBD4YWUFC2ETUCUROFCDW7N36UKEX5SNS2` | — | `CCKLG5SHSYR5FB2ROZ64ZYXN74GT3Q5Z5M3VYQBTHAXYR774BLDNFFFO` |
 | Interface file | `abi/soroban/single_asset_manager.json` | `abi/soroban/locked_pool_manager.json` | `abi/soroban/stable_yield_manager.json` |
 
+The single-asset pool holds a real deposit: 600000000 in its escrow against 600000000
+shares, from `GDZ6XXJIAM5IJOZEJCXGCMF5GPZF3Y77S65BSGZWTUC526NJDESKV3EQ`. Its target raise
+is 1000000000, so there is 400000000 of headroom left — a deposit beyond that is refused
+with `ExceedsTargetRaise` (#203), which is the pool working, not a fault. `smoke_soroban.sh`
+creates its own pool for exactly this reason.
+
 A locked pool has no share token: each position has its own maturity, so there is nothing
 to make fungible. `create_locked_pool` returns `share: null`, and anything iterating pool
 addresses has to tolerate that.
@@ -158,9 +176,30 @@ now reach dispatch. `SOLANA_FINDINGS.md` SOL-5 has the detail.
 The addresses did not change, so nothing you recorded is stale. The IDLs did — any copy of
 `abi/solana/*.json` taken before 2026-10-10 is addressed wrongly and must be replaced.
 
-**There are no pool addresses, and that is not an omission.** A Solana pool is a PDA
-derived from a pool id under its program, created when an admin calls `initialize_pool`.
-There is nothing to record until one exists; derive the address rather than looking it up:
+### A live pool, for integration
+
+Created by `scripts/smoke/solana.mjs` on 2026-10-10 and left in place deliberately. It is
+the first pool any of these programs has held, and proves the deployment works end to end.
+
+| | |
+| --- | --- |
+| `pool_id` | 604840 |
+| Pool | `E9PBe7HwEUXs55oZzW52kuo5T5ajjMqwpz2GPQ2qem7F` |
+| Vault | `GpWpKgwai4eNEcz7s1CunCrFF3vJLX5az7dc3oT3PmEQ` |
+| Share mint | `DqaXV7hysB1WptWtHgwNBLPzcX9VjpuSv2KxcD1mUevp` |
+| Asset mint (mock USDC, 6dp) | `3sBCidTgyHdy2twWSp7v88WgPkqKpYVRR81Li8X5WKcw` |
+| Holds | 500.000000, against 500.000000 shares |
+| `initialize_pool` | `2rXgRYYAajVFyDaju8gNQajyZ84khUJPDtXBGyxtm2M4RzvEzyfuueMK2a3BgXUpiAVtKHEJ71iSHbeaDJZFCzhQ` |
+| `deposit` | `3ezMHhMNzUPHjph6CoqFNbp4UARXfNWfeYrdVBM9spsE68BetZJ8gs2cQ3S36p2Ww1Hg5iHxwcCtDFsif7wfsr8R` |
+
+Both instructions were encoded by hand from `abi/solana/piron_single_asset_solana.json`, so
+the fact they landed also confirms the committed IDL's discriminators, account ordering and
+`PoolTerms` layout are right.
+
+**Other than that one, there are no pool addresses, and that is not an omission.** A Solana
+pool is a PDA derived from a pool id under its program, created when an admin calls
+`initialize_pool`. There is nothing to record until one exists; derive the address rather
+than looking it up:
 
 ```ts
 const [pool] = PublicKey.findProgramAddressSync(

@@ -7,3 +7,7 @@ Cargo.lock
 # Deployment records are environment-specific
 deployments/*.env
 !deployments/README.md
+
+# Smoke-test deps, installed on demand
+scripts/smoke/node_modules/
+scripts/smoke/package-lock.json
