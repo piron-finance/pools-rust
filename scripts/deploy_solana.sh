@@ -89,7 +89,15 @@ echo
 
 # ---------------------------------------------------------------- deploy
 
-declare -A IDS
+# Plain variables rather than an associative array: macOS ships bash 3.2, where
+# `declare -A` does not exist, and a deploy script that only runs on a brew-upgraded
+# shell is a deploy script that fails on somebody else's laptop.
+ID_single_asset=""
+ID_locked=""
+ID_stable_yield=""
+
+set_id() { eval "ID_$(echo "$1" | tr '-' '_')=\"$2\""; }
+get_id() { eval "printf '%s' \"\$ID_$(echo "$1" | tr '-' '_')\""; }
 
 for p in "${PROGRAMS[@]}"; do
   crate="piron_$(echo "$p" | tr '-' '_')_solana"
@@ -105,7 +113,7 @@ for p in "${PROGRAMS[@]}"; do
     ${kp:+--program-id "$kp"} >/dev/null
 
   id="$(solana address -k "$kp")"
-  IDS[$p]="$id"
+  set_id "$p" "$id"
   echo "  $id"
 done
 echo
@@ -118,7 +126,7 @@ echo
 
 echo "Transferring upgrade authority to $AUTHORITY..."
 for p in "${PROGRAMS[@]}"; do
-  id="${IDS[$p]}"
+  id="$(get_id "$p")"
   solana program set-upgrade-authority "$id" \
     --keypair "$KEYPAIR" \
     --new-upgrade-authority "$AUTHORITY" \
@@ -148,9 +156,9 @@ PIRON_SOLANA_UPGRADE_AUTHORITY=$AUTHORITY
 # Program ids. Pools are PDAs under these, derived from a pool id, so there is no
 # per-pool address to record here — the admin creates one by calling initialize_pool and
 # the backend confirms it from the transaction, as it does on EVM.
-PIRON_SOLANA_SINGLE_ASSET_PROGRAM=${IDS[single-asset]}
-PIRON_SOLANA_LOCKED_PROGRAM=${IDS[locked]}
-PIRON_SOLANA_STABLE_YIELD_PROGRAM=${IDS[stable-yield]}
+PIRON_SOLANA_SINGLE_ASSET_PROGRAM=$(get_id single-asset)
+PIRON_SOLANA_LOCKED_PROGRAM=$(get_id locked)
+PIRON_SOLANA_STABLE_YIELD_PROGRAM=$(get_id stable-yield)
 EOF
 
 echo "Wrote $OUT"

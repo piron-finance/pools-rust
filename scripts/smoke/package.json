@@ -1,0 +1,10 @@
+{
+  "name": "piron-smoke",
+  "private": true,
+  "type": "module",
+  "description": "Post-deploy smoke tests. Not part of the Rust build; see README.md.",
+  "dependencies": {
+    "@solana/web3.js": "^1.98.0",
+    "@solana/spl-token": "^0.4.9"
+  }
+}

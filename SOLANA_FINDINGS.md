@@ -187,6 +187,91 @@ must be client-created and rent-funded; and adding a Solana entry to the backend
 
 ---
 
+## SOL-5 · Critical · All three deployed programs were uncallable — **fixed**
+
+**Where** `declare_id!` in each program's `lib.rs`, and the devnet deployment
+
+Found on 2026-10-10, after this file had already called the deployment done. It is the
+most serious thing in it, and it is here rather than above because the order tells you
+something: everything above was found by reading code, and this could only be found by
+sending a transaction.
+
+All three programs declared a placeholder id:
+
+```rust
+declare_id!("Piron11111111111111111111111111111111111111");   // single-asset
+declare_id!("PironLock1111111111111111111111111111111111");   // locked
+declare_id!("PironStab1e11111111111111111111111111111111");   // stable-yield
+```
+
+These are valid base58 and parse to valid pubkeys, so they compile without complaint. The
+programs were then deployed by `solana program deploy`, which assigns an address from a
+keypair — `3vYqiPnknt7dpzxXmioKsfNqK8rW8oX6tDFFa1E6LVeN` and the other two — with no
+relation to the declared id.
+
+Anchor's generated entrypoint checks the two against each other before doing anything
+else (`anchor-syn-1.1.2/src/codegen/program/entry.rs:61`):
+
+```rust
+if *program_id != ID {
+    return Err(anchor_lang::error::ErrorCode::DeclaredProgramIdMismatch.into());
+}
+dispatch(program_id, accounts, data)
+```
+
+So **every instruction on all three programs failed with 4100 before reaching a handler.**
+Not degraded, not partially working: no instruction could execute. Confirmed by
+downloading each binary from devnet and searching it — each contained the placeholder's 32
+bytes as its `ID` and did not contain its own deployed address anywhere.
+
+### Why nothing caught it
+
+Worth writing down, because the same hole would swallow the same bug again.
+
+**The tests cannot catch it.** `harness.rs:159` loads the program *at* its declared id:
+
+```rust
+let program = piron_single_asset_solana::ID;
+svm.add_program_from_file(program, "target/deploy/piron_single_asset_solana.so")
+```
+
+So `*program_id == ID` holds in all 114 tests by construction, and holds nowhere else. A
+test suite that supplies the address from the same constant the program checks against can
+never disagree with it.
+
+**The review could not catch it either**, and this file said so without noticing what it
+was conceding — SOL-4 covers the absence of a deploy script, and Scope ends "Not covered:
+… the devnet deployment itself." A correctness review of handler logic does not look at
+the one line binding code to address, because that line is not logic.
+
+**And the deploy reported success.** `solana program deploy` exits 0 on a program that can
+never run, because uploading bytecode and being callable are different things. "Three
+programs deployed" was true and useless.
+
+**`anchor` makes it actively worse.** `anchor idl build` rewrites `Anchor.toml` and every
+`declare_id!` when the ids do not match its own keypair files: it generates fresh
+keypairs, writes their pubkeys into the sources, and prints nothing. During this fix it
+did exactly that, producing IDLs addressed to three programs that exist on no cluster —
+which was nearly committed.
+
+### Fix
+
+`declare_id!` set to the live devnet address in each program, rebuilt, and upgraded in
+place at the same three addresses, so every address already published stays valid. Each
+on-chain binary was re-downloaded afterwards and confirmed to declare its own address with
+no placeholder left.
+
+Then verified the only way it can be: by sending a real instruction to each deployed
+program on devnet. All three now answer `InstructionFallbackNotFound` (101) — the
+entrypoint dispatched and looked for a handler — where before dispatch was unreachable.
+
+`scripts/generate_abis.sh` now compares the id across all four places it appears
+(`declare_id!`, `Anchor.toml`, the IDL's `address`, and the deployment record) and fails
+if any disagree, with a named check for the placeholder shape. Verified by breaking one id
+deliberately and confirming the script refuses.
+
+---
+
 # Closed in the previous pass
 
 Recorded here so this file is the whole Solana picture rather than half of it. Each was
@@ -263,4 +348,8 @@ pushes tokens at a program that tracks a separate balance.
 Read in full: all three programs' `lib.rs`, `state.rs` and `seeds.rs`, every account
 context, and the shared `piron-core` paths they call.
 
-Not covered: compute-unit budgeting, and the devnet deployment itself — which is SOL-4.
+Not covered: compute-unit budgeting.
+
+The devnet deployment was originally out of scope, which is what SOL-5 cost. It is in
+scope now, and the standard it is held to is a transaction that lands — not a deploy
+command that exits 0.

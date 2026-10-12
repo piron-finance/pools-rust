@@ -23,7 +23,9 @@ pub mod state;
 use piron_core::locked::{calc, lifecycle, types as lt, validate};
 use state::{to_u64, LockedPool, LockedPosition, StoredTier, MAX_TIERS};
 
-declare_id!("PironLock1111111111111111111111111111111111");
+// The live devnet address — see the note in solana/Anchor.toml. A mismatch between this
+// and the address the program runs at fails every instruction with 4100.
+declare_id!("5u4jwH1Rug5b356G3CxxMPbNGH21RexZbaE3wGPc6Yv6");
 
 fn map_err(err: piron_core::Error) -> Error {
     Error::from(ProgramError::Custom(err.code()))

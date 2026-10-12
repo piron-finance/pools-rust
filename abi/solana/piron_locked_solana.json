@@ -1,0 +1,1629 @@
+{
+  "address": "5u4jwH1Rug5b356G3CxxMPbNGH21RexZbaE3wGPc6Yv6",
+  "metadata": {
+    "name": "piron_locked",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Solana binding for Piron Locked pools. Positions, tiers, reserve-backed early exit."
+  },
+  "instructions": [
+    {
+      "name": "add_tier",
+      "docs": [
+        "Adds a lock tier. Terms are fixed per position at deposit, so changing a tier",
+        "later never reprices a position that already exists."
+      ],
+      "discriminator": [
+        92,
+        225,
+        133,
+        110,
+        149,
+        39,
+        185,
+        4
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "tier",
+          "type": {
+            "defined": {
+              "name": "StoredTier"
+            }
+          }
+        }
+      ],
+      "returns": "u32"
+    },
+    {
+      "name": "deploy_to_spv",
+      "docs": [
+        "Sends capital to the SPV to invest.",
+        "",
+        "The whole vault is drawable. Holding back principal plus the interest owed would",
+        "leave the pool nothing to invest, and the yield paying the promised APY has to come",
+        "from somewhere; the obligation is met at maturity out of what the SPV returns."
+      ],
+      "discriminator": [
+        67,
+        209,
+        65,
+        9,
+        0,
+        3,
+        235,
+        41
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "spv_asset",
+          "writable": true
+        },
+        {
+          "name": "spv",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "deposit",
+      "docs": [
+        "Locks capital into a tier. `payment_choice`: 0 upfront, 1 at maturity."
+      ],
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.next_position_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "holder_asset",
+          "writable": true
+        },
+        {
+          "name": "holder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "tier_index",
+          "type": "u32"
+        },
+        {
+          "name": "payment_choice",
+          "type": "u8"
+        }
+      ],
+      "returns": "u64"
+    },
+    {
+      "name": "exit_early",
+      "docs": [
+        "Exits before maturity, paying accrued interest less the tier's penalty.",
+        "",
+        "The vault holds only principal until the SPV returns yield, so the exit is normally",
+        "short by exactly the interest earned — the ordinary case, not an edge one. The",
+        "reserve lends the difference and the pool owes it back."
+      ],
+      "discriminator": [
+        53,
+        140,
+        162,
+        82,
+        176,
+        90,
+        126,
+        53
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "position.position_id",
+                "account": "LockedPosition"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "holder_asset",
+          "writable": true
+        },
+        {
+          "name": "treasury_asset",
+          "writable": true
+        },
+        {
+          "name": "reserve_asset",
+          "docs": [
+            "The reserve's token account, and whoever may sign for it. Only touched when the",
+            "vault cannot cover the exit.",
+            "",
+            "Bound to the reserve the pool records. Unbound, the pool would book a debt to the",
+            "reserve for money supplied from somewhere else entirely."
+          ],
+          "writable": true
+        },
+        {
+          "name": "reserve"
+        },
+        {
+          "name": "reserve_authority",
+          "signer": true
+        },
+        {
+          "name": "holder",
+          "signer": true
+        },
+        {
+          "name": "owner",
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [],
+      "returns": "u64"
+    },
+    {
+      "name": "initialize_pool",
+      "discriminator": [
+        95,
+        180,
+        10,
+        172,
+        84,
+        174,
+        232,
+        40
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "pool_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "asset_mint"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "pool_id",
+          "type": "u64"
+        },
+        {
+          "name": "spv",
+          "type": "pubkey"
+        },
+        {
+          "name": "treasury",
+          "type": "pubkey"
+        },
+        {
+          "name": "reserve",
+          "type": "pubkey"
+        },
+        {
+          "name": "min_investment",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "redeem",
+      "docs": [
+        "Redeems a matured position at its fixed payout."
+      ],
+      "discriminator": [
+        184,
+        12,
+        86,
+        149,
+        70,
+        196,
+        97,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "position.position_id",
+                "account": "LockedPosition"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "holder_asset",
+          "writable": true
+        },
+        {
+          "name": "holder",
+          "signer": true
+        },
+        {
+          "name": "owner",
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [],
+      "returns": "u64"
+    },
+    {
+      "name": "return_from_spv",
+      "docs": [
+        "Returns capital or yield from the SPV."
+      ],
+      "discriminator": [
+        248,
+        227,
+        143,
+        66,
+        129,
+        25,
+        44,
+        153
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "spv_asset",
+          "writable": true
+        },
+        {
+          "name": "spv",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "roll_over",
+      "docs": [
+        "Rolls a matured position into a fresh term without the money leaving the pool.",
+        "",
+        "The whole maturity payout becomes the new principal — interest compounds — and the",
+        "old position closes as rolled over rather than redeemed, so the two are told apart",
+        "in the record. An upfront term still pays its interest on day one, which is the",
+        "only cash that moves."
+      ],
+      "discriminator": [
+        126,
+        242,
+        169,
+        60,
+        52,
+        220,
+        221,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "position.position_id",
+                "account": "LockedPosition"
+              }
+            ]
+          }
+        },
+        {
+          "name": "new_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "pool.next_position_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "holder_asset",
+          "writable": true
+        },
+        {
+          "name": "holder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "owner",
+          "relations": [
+            "position"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "tier_index",
+          "type": "u32"
+        },
+        {
+          "name": "payment_choice",
+          "type": "u8"
+        }
+      ],
+      "returns": "u64"
+    },
+    {
+      "name": "set_open",
+      "docs": [
+        "Opens or closes the pool to new business.",
+        "",
+        "Redemptions, exits and debt settlement carry on regardless — a closed pool must",
+        "still let people out of what they are already in."
+      ],
+      "discriminator": [
+        178,
+        217,
+        47,
+        88,
+        121,
+        133,
+        223,
+        122
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "is_open",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "set_tier_active",
+      "docs": [
+        "Opens or closes a tier for new business.",
+        "",
+        "Terms are fixed per position at deposit, so closing one never touches a position",
+        "already running under it."
+      ],
+      "discriminator": [
+        118,
+        64,
+        8,
+        193,
+        145,
+        138,
+        136,
+        138
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "tier_index",
+          "type": "u32"
+        },
+        {
+          "name": "is_active",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "settle_debt",
+      "docs": [
+        "Repays the reserve out of the SPV's own funds.",
+        "",
+        "The SPV holds the returned capital, so it is the party that can settle. Leaving the",
+        "debt outstanding would have the reserve subsidising this pool's holders at every",
+        "other pool's expense."
+      ],
+      "discriminator": [
+        133,
+        63,
+        5,
+        255,
+        106,
+        168,
+        238,
+        106
+      ],
+      "accounts": [
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pool.pool_id",
+                "account": "LockedPool"
+              }
+            ]
+          }
+        },
+        {
+          "name": "spv_asset",
+          "writable": true
+        },
+        {
+          "name": "reserve_asset",
+          "docs": [
+            "Bound to the reserve the pool records. With only a mint constraint, the SPV could",
+            "clear the pool's debt by paying an account it controls: the books would show the",
+            "reserve repaid while the reserve received nothing."
+          ],
+          "writable": true
+        },
+        {
+          "name": "spv",
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "LockedPool",
+      "discriminator": [
+        233,
+        74,
+        19,
+        83,
+        94,
+        125,
+        69,
+        206
+      ]
+    },
+    {
+      "name": "LockedPosition",
+      "discriminator": [
+        187,
+        77,
+        173,
+        51,
+        56,
+        221,
+        29,
+        250
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CapitalDeployed",
+      "discriminator": [
+        167,
+        153,
+        57,
+        148,
+        27,
+        239,
+        162,
+        35
+      ]
+    },
+    {
+      "name": "CapitalReturned",
+      "discriminator": [
+        102,
+        29,
+        91,
+        89,
+        61,
+        170,
+        63,
+        22
+      ]
+    },
+    {
+      "name": "PoolInitialized",
+      "discriminator": [
+        100,
+        118,
+        173,
+        87,
+        12,
+        198,
+        254,
+        229
+      ]
+    },
+    {
+      "name": "PoolOpenSet",
+      "discriminator": [
+        213,
+        229,
+        103,
+        126,
+        41,
+        250,
+        196,
+        95
+      ]
+    },
+    {
+      "name": "PositionExitedEarly",
+      "discriminator": [
+        31,
+        144,
+        158,
+        123,
+        67,
+        225,
+        175,
+        185
+      ]
+    },
+    {
+      "name": "PositionOpened",
+      "discriminator": [
+        237,
+        175,
+        243,
+        230,
+        147,
+        117,
+        101,
+        121
+      ]
+    },
+    {
+      "name": "PositionRedeemed",
+      "discriminator": [
+        129,
+        143,
+        180,
+        44,
+        111,
+        214,
+        220,
+        176
+      ]
+    },
+    {
+      "name": "PositionRolledOver",
+      "discriminator": [
+        183,
+        223,
+        205,
+        82,
+        16,
+        23,
+        41,
+        149
+      ]
+    },
+    {
+      "name": "ReserveBorrowed",
+      "discriminator": [
+        85,
+        62,
+        160,
+        185,
+        124,
+        90,
+        153,
+        250
+      ]
+    },
+    {
+      "name": "ReserveRepaid",
+      "discriminator": [
+        251,
+        228,
+        127,
+        176,
+        165,
+        255,
+        129,
+        232
+      ]
+    },
+    {
+      "name": "TierAdded",
+      "discriminator": [
+        230,
+        175,
+        124,
+        76,
+        202,
+        89,
+        91,
+        117
+      ]
+    },
+    {
+      "name": "TierSet",
+      "discriminator": [
+        195,
+        162,
+        76,
+        118,
+        218,
+        200,
+        225,
+        238
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "CapitalDeployed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CapitalReturned",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LockedPool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool_id",
+            "type": "u64"
+          },
+          {
+            "name": "is_open",
+            "docs": [
+              "False stops new deposits and rollovers. Redemptions and exits stay open — closing",
+              "a pool must never trap money already in it."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "spv",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "reserve",
+            "docs": [
+              "Yield reserve backing early exits. Default when the pool has none, in which case an",
+              "exit the vault cannot cover fails rather than silently paying short."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "min_investment",
+            "type": "u64"
+          },
+          {
+            "name": "tier_count",
+            "type": "u8"
+          },
+          {
+            "name": "tiers",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "StoredTier"
+                  }
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "next_position_id",
+            "docs": [
+              "Monotonic. Position addresses derive from it, so it never rewinds."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_principal_locked",
+            "type": "u64"
+          },
+          {
+            "name": "total_interest_committed",
+            "type": "u64"
+          },
+          {
+            "name": "total_interest_paid_upfront",
+            "type": "u64"
+          },
+          {
+            "name": "total_interest_pending_maturity",
+            "type": "u64"
+          },
+          {
+            "name": "total_invested_amount",
+            "type": "u64"
+          },
+          {
+            "name": "total_expected_maturity_payout",
+            "type": "u64"
+          },
+          {
+            "name": "active_positions",
+            "type": "u32"
+          },
+          {
+            "name": "total_positions",
+            "type": "u32"
+          },
+          {
+            "name": "reserve_debt",
+            "docs": [
+              "Owed to the yield reserve for early exits the vault could not cover."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LockedPosition",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "position_id",
+            "type": "u64"
+          },
+          {
+            "name": "principal_deposited",
+            "type": "u64"
+          },
+          {
+            "name": "full_interest_amount",
+            "type": "u64"
+          },
+          {
+            "name": "apy_bps_at_deposit",
+            "type": "u32"
+          },
+          {
+            "name": "payment_choice",
+            "docs": [
+              "0 = upfront, 1 = at maturity."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "interest_paid",
+            "type": "bool"
+          },
+          {
+            "name": "invested_amount",
+            "type": "u64"
+          },
+          {
+            "name": "expected_maturity_payout",
+            "type": "u64"
+          },
+          {
+            "name": "lock_start",
+            "type": "i64"
+          },
+          {
+            "name": "lock_end",
+            "type": "i64"
+          },
+          {
+            "name": "tier_index",
+            "type": "u32"
+          },
+          {
+            "name": "status",
+            "docs": [
+              "Mirrors `PositionStatus`: 0 active, 1 matured, 2 redeemed, 3 early exit, 4 rolled."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "actual_payout",
+            "type": "u64"
+          },
+          {
+            "name": "penalty_paid",
+            "type": "u64"
+          },
+          {
+            "name": "interest_earned",
+            "type": "u64"
+          },
+          {
+            "name": "auto_rollover",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool_id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolOpenSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "is_open",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionExitedEarly",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "position_id",
+            "type": "u64"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "penalty",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionOpened",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "position_id",
+            "type": "u64"
+          },
+          {
+            "name": "principal",
+            "type": "u64"
+          },
+          {
+            "name": "tier_index",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionRedeemed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "position_id",
+            "type": "u64"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionRolledOver",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_position_id",
+            "type": "u64"
+          },
+          {
+            "name": "new_position_id",
+            "type": "u64"
+          },
+          {
+            "name": "principal",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ReserveBorrowed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "outstanding",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ReserveRepaid",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "outstanding",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StoredTier",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duration_days",
+            "type": "u32"
+          },
+          {
+            "name": "apy_bps",
+            "type": "u32"
+          },
+          {
+            "name": "early_exit_penalty_bps",
+            "type": "u32"
+          },
+          {
+            "name": "min_deposit",
+            "type": "u64"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TierAdded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TierSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "index",
+            "type": "u32"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          }
+        ]
+      }
+    }
+  ]
+}

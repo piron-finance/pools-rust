@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 #
-# Deploys Piron to a Stellar network and creates a pool through the factory.
+# Deploys the Piron infrastructure to a Stellar network.
 #
 #   ./scripts/deploy_soroban.sh testnet
 #
+# Infrastructure only — no pools. A pool is created by an admin calling the factory, which
+# is `scripts/create_soroban_pool.sh`, and is a separate decision from standing the system
+# up: it has a term, a target raise, an asset and a share name, none of which a deploy
+# script is in a position to choose. This matches EVM, where `DeployUpgradeable.s.sol`
+# deploys the system and the admin creates pools afterwards.
+#
 # Order follows the dependency graph: access control first, because everything authorises
 # against it; the registry and factory next, because a pool has to register somewhere; and
-# pools last, built by the factory so that a manager and its escrow are wired atomically.
+# the factory's upgrade authority before anything can be built with it.
 #
 # Writes deployments/soroban-<network>.env.
 
@@ -92,64 +98,42 @@ call "$FACTORY" set_manager_wasm --caller "$ADMIN" --kind SingleAsset --wasm_has
 call "$FACTORY" set_manager_wasm --caller "$ADMIN" --kind Locked --wasm_hash "$LOCKED_WASM" >/dev/null
 call "$FACTORY" set_manager_wasm --caller "$ADMIN" --kind StableYield --wasm_hash "$STABLE_WASM" >/dev/null
 
-echo "Creating a pool through the factory..."
-NOW="$(date +%s)"
-SALT="$(openssl rand -hex 32)"
-ROLES="{\"admin\":\"$ADMIN\",\"operator\":\"$OPERATOR\",\"spv\":\"$SPV\",\"emergency\":\"$EMERGENCY\",\"treasury\":\"$TREASURY\"}"
-CONFIG="{\"instrument_type\":0,\"face_value\":\"0\",\"purchase_price\":\"1000000000\",\"target_raise\":\"1000000000\",\"epoch_end_time\":$((NOW+604800)),\"maturity_date\":$((NOW+7776000)),\"coupon_dates\":[],\"coupon_rates\":[],\"discount_rate\":500,\"minimum_funding_threshold\":8000,\"min_investment\":\"10000000\",\"withdrawal_fee_bps\":50}"
-
-# Deterministic: the addresses are knowable before the transaction that creates them.
-META='{"name":"Piron 90d Bill","symbol":"pBILL90","decimals":7}'
-PREDICTED="$(call "$FACTORY" predict --salt "$SALT")"
-POOL="$(call "$FACTORY" create_single_asset_pool --caller "$ADMIN" --salt "$SALT" \
-  --config "$CONFIG" --roles "$ROLES" --asset "$ASSET" --share_metadata "$META")"
-MANAGER="$(echo "$POOL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["manager"])')"
-ESCROW="$(echo "$POOL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["escrow"])')"
-SHARE="$(echo "$POOL" | python3 -c 'import json,sys; print(json.load(sys.stdin)["share"])')"
-
-call "$FEES" set_collector --caller "$ADMIN" --collector "$MANAGER" --allowed true >/dev/null
-call "$RESERVE_C" set_source --caller "$ADMIN" --source "$MANAGER" --allowed true >/dev/null
-
-# A locked pool, wired to the reserve.
-#
-# Early exit pays principal plus interest accrued to today, and the escrow holds only the
-# principal until the SPV returns yield — so the exit is short by the interest earned, in
-# the ordinary case rather than an edge one. The reserve lends the difference, which means
-# the pool has to be able to call it (Operator) and to repay it (a registered source).
-echo "Creating a locked pool..."
-LOCKED_SALT="$(openssl rand -hex 32)"
-LOCKED="$(call "$FACTORY" create_locked_pool --caller "$ADMIN" --salt "$LOCKED_SALT" \
-  --roles "$ROLES" --asset "$ASSET" --min_investment 10000000 --reserve "\"$RESERVE_C\"")"
-LOCKED_MANAGER="$(echo "$LOCKED" | python3 -c 'import json,sys; print(json.load(sys.stdin)["manager"])')"
-LOCKED_ESCROW="$(echo "$LOCKED" | python3 -c 'import json,sys; print(json.load(sys.stdin)["escrow"])')"
-
-call "$ACCESS" grant_during_deployment --caller "$ADMIN" --role 2 --account "$LOCKED_MANAGER" >/dev/null
-call "$RESERVE_C" set_source --caller "$ADMIN" --source "$LOCKED_MANAGER" --allowed true >/dev/null
-call "$FEES" set_collector --caller "$ADMIN" --collector "$LOCKED_MANAGER" --allowed true >/dev/null
-
 # The SPV repays the reserve out of the capital it returns, so it settles debts directly
-# rather than through the pool, which holds no funds of its own.
+# rather than through the pool, which holds no funds of its own. Protocol-level, not
+# per-pool: the same SPV serves every pool it is authorised for.
 call "$RESERVE_C" set_source --caller "$ADMIN" --source "$SPV" --allowed true >/dev/null
 
-# Every singleton names the timelock as its upgrader here. Pools are created later and
-# bind theirs in their own constructor, from the timelock the factory is given below — so
-# no bytecode in the system can be replaced without passing the 72-hour delay and the
-# guardian's brake, and a pool's upgrade slot is never left open for the taking.
+# The factory stamps this onto every pool it builds, and refuses to build any without it
+# rather than deploying a pool whose upgrade authority nobody holds. It has to be set
+# before the first pool exists, which is why it belongs here and not in the pool script.
+call "$FACTORY" set_timelock --caller "$ADMIN" --timelock "$TIMELOCK" >/dev/null
+
+# Every singleton names the timelock as its upgrader, so no part of the system's own
+# bytecode can be replaced without passing the 72-hour delay and the guardian's brake.
+# Pools bind theirs in their own constructor, from the timelock set above.
 echo "Binding upgraders..."
-for c in "$ACCESS" "$REGISTRY" "$FEES" "$FACTORY" "$RESERVE_C" "$MANAGER" "$LOCKED_MANAGER"; do
+for c in "$ACCESS" "$REGISTRY" "$FEES" "$FACTORY" "$RESERVE_C"; do
   call "$c" bind_upgrader --caller "$ADMIN" --upgrader "$TIMELOCK" >/dev/null
 done
 call "$TIMELOCK" bind_upgrader --caller "$ADMIN" --upgrader "$TIMELOCK" >/dev/null
 
-# Stamped onto every pool the factory builds. Without it the factory refuses to create
-# pools at all, rather than deploying one whose upgrade authority nobody holds.
-call "$FACTORY" set_timelock --caller "$ADMIN" --timelock "$TIMELOCK" >/dev/null
-echo "Factory configured to stamp the timelock onto new pools"
+# Read it back. A factory that accepted `set_timelock` but did not store it would create
+# pools whose upgrade slot is open for the taking, and the failure would be silent until
+# somebody claimed one — so this is checked here rather than assumed.
+CONFIGURED="$(call "$FACTORY" timelock | tr -d '"')"
+if [[ "$CONFIGURED" != "$TIMELOCK" ]]; then
+  echo "FAILED: factory timelock is '$CONFIGURED', expected '$TIMELOCK'" >&2
+  exit 1
+fi
+echo "Factory verified: every pool it creates binds $TIMELOCK as its upgrader"
 
 mkdir -p "$ROOT/deployments"
 cat > "$OUT" <<EOF
 # Piron on Stellar — $NETWORK
 # Generated $(date -u +%Y-%m-%dT%H:%M:%SZ) by scripts/deploy_soroban.sh
+#
+# Infrastructure. Pools are created by an admin through the factory and recorded in
+# soroban-$NETWORK-pools.env by scripts/create_soroban_pool.sh.
 PIRON_NETWORK=$NETWORK
 PIRON_ASSET=$ASSET
 PIRON_ACCESS_MANAGER=$ACCESS
@@ -163,18 +147,27 @@ PIRON_SHARE_WASM=$SHARE_WASM
 PIRON_SINGLE_ASSET_WASM=$SINGLE_WASM
 PIRON_LOCKED_WASM=$LOCKED_WASM
 PIRON_STABLE_YIELD_WASM=$STABLE_WASM
-PIRON_POOL_MANAGER=$MANAGER
-PIRON_POOL_ESCROW=$ESCROW
-PIRON_POOL_SHARE=$SHARE
-PIRON_LOCKED_MANAGER=$LOCKED_MANAGER
-PIRON_LOCKED_ESCROW=$LOCKED_ESCROW
 PIRON_ADMIN=$ADMIN
 PIRON_SPV=$SPV
 PIRON_OPERATOR=$OPERATOR
+PIRON_EMERGENCY=$EMERGENCY
+PIRON_MULTISIG=$MULTISIG
 PIRON_TREASURY=$TREASURY
+PIRON_FEE_RESERVE_DESTINATION=$RESERVE
+PIRON_FEE_OPS_DESTINATION=$OPS
 EOF
 
 echo
-echo "Predicted before creation: $PREDICTED"
 echo "Deployed to $NETWORK:"
 sed 's/^/  /' "$OUT"
+echo
+echo "No pools exist yet. Create one:"
+echo "  ./scripts/create_soroban_pool.sh single-asset  $NETWORK"
+echo "  ./scripts/create_soroban_pool.sh locked        $NETWORK"
+echo "  ./scripts/create_soroban_pool.sh stable-yield  $NETWORK"
+echo
+echo "Still operational, and deliberately not done here:"
+echo "  - access-manager finalize_deployment, which closes the instant-grant window."
+echo "    Leave it open until every pool a locked deployment needs exists, because a"
+echo "    locked pool's manager needs the Operator role and after finalisation that is a"
+echo "    24-hour propose-then-execute by the multisig."

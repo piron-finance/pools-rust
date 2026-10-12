@@ -17,7 +17,9 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+# anchor-spl needs its own idl-build too, or the SPL account types in these contexts
+# have no IDL traits and the whole emit fails — which is why no IDL existed.
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
 piron-core = { path = "../../crates/piron-core" }

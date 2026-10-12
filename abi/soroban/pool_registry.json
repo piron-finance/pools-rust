@@ -1,0 +1,1094 @@
+[
+  {
+    "udt_error_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Error",
+      "cases": [
+        {
+          "doc": "",
+          "name": "PoolNotRegistered",
+          "value": 610
+        },
+        {
+          "doc": "",
+          "name": "AssetNotApproved",
+          "value": 611
+        },
+        {
+          "doc": "",
+          "name": "SpvNotAuthorized",
+          "value": 612
+        },
+        {
+          "doc": "",
+          "name": "AlreadyRegistered",
+          "value": 613
+        },
+        {
+          "doc": "",
+          "name": "NotInitialized",
+          "value": 700
+        },
+        {
+          "doc": "",
+          "name": "Unauthorized",
+          "value": 701
+        },
+        {
+          "doc": "",
+          "name": "AlreadyBound",
+          "value": 715
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Access"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "Pool",
+            "type_": [
+              "address"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "ApprovedAsset",
+            "type_": [
+              "address"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "AuthorizedSpv",
+            "type_": [
+              "address"
+            ]
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "PoolCount"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "PoolInfo",
+      "fields": [
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "created_at",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "escrow",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "manager",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "pool_type",
+          "type_": {
+            "udt": {
+              "name": "PoolType"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "AssetApproval",
+      "prefix_topics": [
+        "asset_approval"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "approved",
+          "type_": "bool",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "PoolRegistered",
+      "prefix_topics": [
+        "pool_registered"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "pool",
+          "type_": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address",
+          "location": "data"
+        },
+        {
+          "doc": "",
+          "name": "created_at",
+          "type_": "u64",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "event_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "SpvAuthorization",
+      "prefix_topics": [
+        "spv_authorization"
+      ],
+      "params": [
+        {
+          "doc": "",
+          "name": "spv",
+          "type_": "address",
+          "location": "topic_list"
+        },
+        {
+          "doc": "",
+          "name": "authorized",
+          "type_": "bool",
+          "location": "data"
+        }
+      ],
+      "data_format": "map"
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Replaces this contract's code. Only the bound upgrader may call it.",
+      "name": "upgrade",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "wasm_hash",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Who may upgrade this contract, if anyone yet.",
+      "name": "upgrader",
+      "inputs": [],
+      "outputs": [
+        {
+          "option": {
+            "value_type": "address"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "pool_info",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "pool",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "udt": {
+                "name": "PoolInfo"
+              }
+            },
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "pool_count",
+      "inputs": [],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "__constructor",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "access",
+          "type_": "address"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Names the contract permitted to upgrade this one. Callable once.\\n\\nOne-way on purpose: a contract whose upgrader could be repointed has no timelock,\\nonly the appearance of one.",
+      "name": "bind_upgrader",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "upgrader",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Records a newly deployed pool. Factory or pool-creator role.",
+      "name": "register_pool",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "pool",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "manager",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "escrow",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "pool_type",
+          "type_": {
+            "udt": {
+              "name": "PoolType"
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Retires a pool without forgetting it. Its positions still resolve.",
+      "name": "set_pool_active",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "pool",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "is_approved_asset",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "is_authorized_spv",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "spv",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "is_registered_pool",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "pool",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Asserts all three preconditions a manager needs before moving capital to an SPV.",
+      "name": "require_deployable",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "pool",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "spv",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Adds or removes an asset from the accepted list. Admin only.",
+      "name": "set_asset_approved",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "approved",
+          "type_": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Adds or removes an SPV from the approved counterparty list. Admin only.",
+      "name": "set_spv_authorized",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "spv",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "authorized",
+          "type_": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "void",
+            "error_type": "error"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Addresses permitted to drive a pool.\\n\\nA placeholder for the full seven-role `AccessManager`: these are the roles a pool's own\\nlifecycle needs, resolved once at construction rather than looked up per call.",
+      "lib": "",
+      "name": "Roles",
+      "fields": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "emergency",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "operator",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "spv",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "treasury",
+          "type_": "address"
+        },
+        {
+          "doc": "The only address permitted to replace this pool's bytecode, bound at construction.\\n\\nSoroban claims upgrade authority once and irrevocably, so an unbound slot is not\\nmerely \"not upgradeable yet\" \\xe2\\x80\\x94 it is a slot anyone with the admin role can claim\\nfor themselves, permanently, on a pool already holding funds. Binding it in the\\nconstructor closes that window rather than leaving it to an operational step\\nsomebody has to remember.\\n\\nThe factory overwrites whatever a pool creator passes with the timelock it was\\nconfigured with, so this cannot be used to name a different authority.",
+          "name": "upgrader",
+          "type_": "address"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "Config",
+      "fields": [
+        {
+          "doc": "Seconds a depositor must stay in before they may queue to leave.",
+          "name": "holding_period",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "min_absolute_reserve",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "min_investment",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "reserve_ratio_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "withdrawal_fee_bps",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "Which kind of pool a registration describes.\\n\\nShared rather than owned by the registry, because the factory has to name it when it\\nregisters a pool it just built.",
+      "lib": "",
+      "name": "PoolType",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "SingleAsset"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Locked"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "StableYield"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredTier",
+      "fields": [
+        {
+          "doc": "",
+          "name": "apy_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "duration_days",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "early_exit_penalty_bps",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "min_deposit",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredUser",
+      "fields": [
+        {
+          "doc": "",
+          "name": "coupons_claimed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "deposit_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "Shares subscribed through this pool.\\n\\nCoupon entitlement is struck on this, not on the holder's live share balance. A\\nbalance is a number anyone can move between addresses, and an entitlement derived\\nfrom it resets every time it moves \\xe2\\x80\\x94 so the same coupon could be claimed once per\\naddress the shares passed through. This figure only the manager writes.",
+          "name": "shares",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredState",
+      "fields": [
+        {
+          "doc": "",
+          "name": "actual_invested",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "funds_returned_by_spv",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "funds_withdrawn_by_spv",
+          "type_": "i128"
+        },
+        {
+          "doc": "Share supply frozen at settlement. Redemption divides by this, not live supply.",
+          "name": "shares_at_maturity",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "status",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "total_coupons_claimed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_coupons_distributed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_coupons_received",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_discount_earned",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_fees_collected",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_raised",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredConfig",
+      "fields": [
+        {
+          "doc": "",
+          "name": "coupon_dates",
+          "type_": {
+            "vec": {
+              "element_type": "u64"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "coupon_rates",
+          "type_": {
+            "vec": {
+              "element_type": "u32"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "discount_rate",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "epoch_end_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "face_value",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "instrument_type",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "maturity_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "min_investment",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "minimum_funding_threshold",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "purchase_price",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "target_raise",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "withdrawal_fee_bps",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredMetrics",
+      "fields": [
+        {
+          "doc": "",
+          "name": "active_positions",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "interest_pending_maturity",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_interest_committed",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_interest_paid_upfront",
+          "type_": "i128"
+        },
+        {
+          "doc": "Capital currently with the SPV.",
+          "name": "total_invested",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "total_positions",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "total_principal_locked",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredRequest",
+      "fields": [
+        {
+          "doc": "",
+          "name": "deadline",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "estimated_value",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "fee_amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "processed",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "processed_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "request_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "shares",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredPosition",
+      "fields": [
+        {
+          "doc": "",
+          "name": "actual_payout",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "apy_bps_at_deposit",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "auto_rollover",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "expected_maturity_payout",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "full_interest_amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "interest_earned",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "interest_paid",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "invested_amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "lock_end",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "lock_start",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "0 = upfront, 1 = at maturity.",
+          "name": "payment_choice",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "penalty_paid",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "principal_deposited",
+          "type_": "i128"
+        },
+        {
+          "doc": "Matches `PositionStatus` ordering.",
+          "name": "status",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "tier_index",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "StoredInstrument",
+      "fields": [
+        {
+          "doc": "",
+          "name": "annual_coupon_rate",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "coupon_frequency",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "coupons_paid",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "face_value",
+          "type_": "i128"
+        },
+        {
+          "doc": "0 = discounted, 1 = interest-bearing.",
+          "name": "instrument_type",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "is_active",
+          "type_": "bool"
+        },
+        {
+          "doc": "",
+          "name": "maturity_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "next_coupon_due_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "purchase_date",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "purchase_price",
+          "type_": "i128"
+        }
+      ]
+    }
+  }
+]

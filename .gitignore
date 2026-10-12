@@ -7,3 +7,8 @@ Cargo.lock
 # Deployment records are environment-specific
 deployments/*.env
 !deployments/README.md
+
+# Smoke-test deps, installed on demand. No trailing slash: during a run this is often a
+# symlink to a shared install, and a slash-suffixed pattern matches only real directories.
+scripts/smoke/node_modules
+scripts/smoke/package-lock.json
