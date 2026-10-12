@@ -4,10 +4,16 @@ One job: send a real transaction to a real deployment and watch money move. Run 
 every deploy, before telling anyone the deployment is usable.
 
 ```bash
-cd scripts/smoke && npm install     # once
-node solana.mjs                     # devnet, or PIRON_CLUSTER=mainnet-beta
-../smoke_soroban.sh testnet
+cd scripts/smoke && npm install          # once
+node solana.mjs                          # single-asset: initialize, deposit
+node solana_locked.mjs                   # locked: tier, deposit, early exit
+node solana_stable_yield.mjs             # stable yield: queue account, deposit, withdrawal queue
+../smoke_soroban.sh testnet              # Soroban single-asset
 ```
+
+`PIRON_CLUSTER` and `PIRON_RPC` override the Solana target. The public devnet RPC
+rate-limits hard, so each send simulates first and keeps those logs — a 429 on submit
+discards the program's own error otherwise, which is the only part worth reading.
 
 ## Why these exist
 
@@ -36,9 +42,32 @@ PDAs, calls `initialize_pool`, calls `deposit`, and then reads the vault and the
 token accounts back from chain to confirm the money and the shares are where they should
 be. It fails loudly on the first instruction that does not land.
 
+`solana_locked.mjs` initializes a locked pool, adds a 90-day 8% tier, deposits with
+interest paid upfront, and exits early — checking the holder ends down by exactly the 2%
+penalty and that the penalty is in the treasury.
+
+`solana_stable_yield.mjs` is the one that needed real work. The withdrawal queue is 22,600
+bytes; a CPI can allocate at most 10,240 and a PDA cannot sign a top-level create, so the
+queue cannot be both a PDA and that large. The client has to create it as a plain
+program-owned account and let the pool record its address — and because nothing on the
+client side did that, no stable-yield pool had ever existed on devnet. This script creates
+it, initializes the pool, deposits, queues a withdrawal and processes it.
+
 `../smoke_soroban.sh` does the equivalent against a Soroban deployment: funds an investor,
 deposits into a single-asset pool, and checks the escrow balance, the share supply and the
 investor's share balance all agree with the amount deposited.
+
+## What they found when first run
+
+The three pool types agree across chains to the unit, which is the shared `piron-core`
+doing its job:
+
+| | Stellar | Solana |
+| --- | --- | --- |
+| Locked, 2000 @ 90d 8%, upfront | escrow 1960547946 | vault 1960.547946 |
+| Early exit payout | 1920547946 | 1920547946 |
+| Exit penalty to treasury | 2% of principal | 40.000000 |
+| Stable yield, 2000 queued, 0.5% fee | paid 1990000000 | paid 1990.000000 |
 
 Neither cleans up. The pools they create are evidence, and on a test network they cost
 nothing to leave behind.

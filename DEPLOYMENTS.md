@@ -11,8 +11,21 @@ touches them.
 
 Source: `piron-rust`, branch `fix/audit-findings`.
 
-Both are smoke-tested: a real deposit landed on each chain and the books agree. The
-transaction hashes are below, and `scripts/smoke/README.md` says how to re-run them.
+**All three pool types are proven working on both chains**, by real transactions against
+these addresses — not by passing tests. Every flow below ran on 2026-10-12:
+
+| Flow | Stellar | Solana |
+| --- | --- | --- |
+| Single asset: deposit, shares struck | yes | yes |
+| Locked: tier config, deposit, position valuation, early-exit quote, early exit | yes | yes |
+| Stable yield: deposit, NAV, capital deployment, instrument accrual, withdrawal queue | yes | yes |
+
+The two runtimes agree to the unit, which is the shared `piron-core` doing its job: a
+2000-unit locked deposit at 90d/8% with interest upfront leaves 1960547946 in escrow on
+Stellar and 1960.547946 in the vault on Solana, and the early exit pays 1920547946 on
+both. A 2000-unit stable-yield withdrawal pays 1990 after the 0.5% fee on both.
+
+`scripts/smoke/README.md` says how to re-run all of it.
 
 ```bash
 ./scripts/smoke_soroban.sh testnet        # creates a pool, deposits, checks the escrow
@@ -196,6 +209,21 @@ Both instructions were encoded by hand from `abi/solana/piron_single_asset_solan
 the fact they landed also confirms the committed IDL's discriminators, account ordering and
 `PoolTerms` layout are right.
 
+A locked pool and a stable-yield pool were proven the same way on 2026-10-12:
+
+| | Locked | Stable yield |
+| --- | --- | --- |
+| Pool | `2CfqJeHcPYg22JtNMfp2KD5DFcSEmz92SVorB1G866ZU` | `41XCmNTQSaYwZiCHzYcUXCzY9UcF76ZY1iZJ1YxhyfNB` |
+| Vault | `3wVeKEgwgQyowo43VQzYTWBeWdkELVJ6F5mduM11jT7f` | `5T64gJPD9DyZ194iNyK2ckhrFATnCsiQj7FCR8KnRYVu` |
+| Share mint | — (positions are not fungible) | `5xsbNyKiohsWtjY6ZrHRH4BAa4JqeiJ9biHG7R93xz3Z` |
+| Queue | — | `8CvWvyF5S77qKiproLoeT7HUMgF7Fe5Se3p4oJQR24Lw` |
+| Proven | tier, deposit, early exit (`38eZXWic…`) | queue creation, deposit, request, process |
+
+The locked pool took a 2000.000000 deposit at 90d/8% with interest upfront, then exited
+early: the holder ended down exactly the 40.000000 penalty and the penalty is in the
+treasury. The stable-yield pool took 5000.000000, queued 2000.000000, and paid 1990.000000
+after the 0.5% fee.
+
 **Other than that one, there are no pool addresses, and that is not an omission.** A Solana
 pool is a PDA derived from a pool id under its program, created when an admin calls
 `initialize_pool`. There is nothing to record until one exists; derive the address rather
@@ -211,17 +239,37 @@ const [pool] = PublicKey.findProgramAddressSync(
 Positions are seeded `['position', pool, positionId]`, so a position belongs to exactly one
 pool by derivation — the cross-pool class of bug is not expressible here.
 
-### Before a Solana pool can be opened
+### Opening a Solana pool
 
-- **The stable-yield queue account is 22,600 bytes**, over the 10,240-byte limit a program
-  can allocate for itself. The client has to create and rent-fund it in the same
-  transaction as `initialize_pool`. Nothing in this repo does that yet.
-- **The upgrade authority is a plain keypair, not a multisig.** `SOLANA_PLAN.md:192` calls
-  for a Squads v4 vault with a delay policy. On devnet a hot key is acceptable; for mainnet
-  it is the difference between a 72-hour delay and one transaction. The deploy script
-  refuses to run without `PIRON_UPGRADE_AUTHORITY` and reads the authority back from chain
-  after setting it, so the step cannot be silently skipped — but the vault itself has to
-  exist first.
+`initialize_pool`, as an admin, same as EVM and Stellar. Working examples for all three
+types are in `scripts/smoke/` and are the reference for the backend.
+
+**Stable yield needs one extra account the client must create.** The withdrawal queue is
+22,600 bytes; a CPI can allocate at most 10,240, and a PDA cannot sign a top-level create,
+so the queue cannot be both a PDA and that large. The client creates it as a plain
+program-owned account in the same transaction as `initialize_pool`, and the pool records
+its address — anything deriving the queue reads `pool.queue` rather than computing a seed:
+
+```ts
+const queue = Keypair.generate();
+const rent  = await conn.getMinimumBalanceForRentExemption(22_600);
+const createQueue = SystemProgram.createAccount({
+  fromPubkey: payer.publicKey, newAccountPubkey: queue.publicKey,
+  lamports: rent, space: 22_600, programId: STABLE_YIELD_PROGRAM,
+});
+// then initialize_pool in the same transaction, with queue.publicKey as the `queue` account
+```
+
+Rent is ~0.1155 SOL per pool. `scripts/smoke/solana_stable_yield.mjs` is the full working
+version. This step is why no stable-yield pool existed on devnet until now.
+
+**Mainnet needs the Squads vault first.** `SOLANA_PLAN.md:192` calls for a Squads v4
+multisig with a delay policy as upgrade authority; devnet runs on a plain keypair, which is
+fine for devnet and is the difference between a 72-hour delay and one transaction on
+mainnet. `deploy_solana.sh` already refuses to run without `PIRON_UPGRADE_AUTHORITY`,
+checks the account exists on the target cluster, and reads the authority back from chain
+after transferring — so this cannot be silently skipped. Creating the vault is the one
+action a script cannot do for you.
 
 ## What the backend has to change, not just read
 
